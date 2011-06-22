@@ -860,15 +860,18 @@ public abstract class AbstractHttpClient implements HttpClient {
             HttpResponse out; 
             try {
                 out = director.execute(target, request, execContext);
-            } catch (Throwable t) {
-                if (getConnectionBackoffStrategy().shouldBackoff(t)) {
+            } catch (RuntimeException re) {
+                if (getConnectionBackoffStrategy().shouldBackoff(re)) {
                     getBackoffManager().backOff(route);
                 }
-                if (t instanceof Error) throw (Error)t;
-                if (t instanceof RuntimeException) throw (RuntimeException)t;
-                if (t instanceof HttpException) throw (HttpException)t;
-                if (t instanceof IOException) throw (IOException)t;
-                throw new RuntimeException("unexpected exception", t);
+                throw re;
+            } catch (Exception e) {
+                if (getConnectionBackoffStrategy().shouldBackoff(e)) {
+                    getBackoffManager().backOff(route);
+                }
+                if (e instanceof HttpException) throw (HttpException)e;
+                if (e instanceof IOException) throw (IOException)e;
+                throw new RuntimeException("unexpected exception", e);
             }
             if (getConnectionBackoffStrategy().shouldBackoff(out)) {
                 getBackoffManager().backOff(route);

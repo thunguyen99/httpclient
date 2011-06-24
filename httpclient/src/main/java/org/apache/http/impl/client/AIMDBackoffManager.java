@@ -21,8 +21,11 @@ public class AIMDBackoffManager implements BackoffManager {
     private long coolDown = 5 * 1000L;
     private double backoffFactor = 0.5;
     private int cap = ConnPerRouteBean.DEFAULT_MAX_CONNECTIONS_PER_ROUTE;
-    private Map<HttpRoute,Long> lastRouteUpdates =
+    private Map<HttpRoute,Long> lastRouteProbes =
         new HashMap<HttpRoute,Long>();
+    private Map<HttpRoute,Long> lastRouteBackoffs =
+        new HashMap<HttpRoute,Long>();
+
     
     /**
      * Creates an <code>AIMDBackoffManager</code> to manage
@@ -43,7 +46,11 @@ public class AIMDBackoffManager implements BackoffManager {
     public void backOff(HttpRoute route) {
         synchronized(connPerRoute) {
             int curr = connPerRoute.getMaxForRoute(route);
-            setNewMaxIfCooledDown(route, getBackedOffPoolSize(curr));
+            Long lastUpdate = getLastUpdate(lastRouteBackoffs, route);
+            long now = clock.getCurrentTime();
+            if (now - lastUpdate < coolDown) return;
+            connPerRoute.setMaxForRoute(route, getBackedOffPoolSize(curr));
+            lastRouteBackoffs.put(route, now);
         }
     }
 
@@ -56,22 +63,20 @@ public class AIMDBackoffManager implements BackoffManager {
         synchronized(connPerRoute) {
             int curr = connPerRoute.getMaxForRoute(route);
             int max = (curr >= cap) ? cap : curr + 1; 
-            setNewMaxIfCooledDown(route, max);
+            Long lastProbe = getLastUpdate(lastRouteProbes, route);
+            Long lastBackoff = getLastUpdate(lastRouteBackoffs, route);
+            long now = clock.getCurrentTime();
+            if (now - lastProbe < coolDown || now - lastBackoff < coolDown)
+                return; 
+            connPerRoute.setMaxForRoute(route, max);
+            lastRouteProbes.put(route, now);
         }
     }
 
-    private Long getLastUpdate(HttpRoute route) {
-        Long lastUpdate = lastRouteUpdates.get(route);
+    private Long getLastUpdate(Map<HttpRoute,Long> updates, HttpRoute route) {
+        Long lastUpdate = updates.get(route);
         if (lastUpdate == null) lastUpdate = 0L;
         return lastUpdate;
-    }
-
-    private void setNewMaxIfCooledDown(HttpRoute route, int max) {
-        Long lastUpdate = getLastUpdate(route);
-        long now = clock.getCurrentTime();
-        if (now - lastUpdate < coolDown) return;
-        connPerRoute.setMaxForRoute(route, max);
-        lastRouteUpdates.put(route, now);
     }
 
     /**

@@ -112,6 +112,18 @@ public class TestAIMDBackoffManager {
     }
     
     @Test
+    public void willBackoffImmediatelyEvenAfterAProbe() {
+        connPerRoute.setMaxForRoute(route, 8);
+        long now = System.currentTimeMillis();
+        clock.setCurrentTime(now);
+        impl.probe(route);
+        long max = connPerRoute.getMaxForRoute(route);
+        clock.setCurrentTime(now + 1);
+        impl.backOff(route);
+        assertTrue(connPerRoute.getMaxForRoute(route) < max);
+    }
+    
+    @Test
     public void backOffFactorIsConfigurable() {
         connPerRoute.setMaxForRoute(route, 10);
         impl.setBackoffFactor(0.9);

@@ -63,7 +63,7 @@ import org.apache.http.protocol.HttpContext;
  * @since 4.3
  */
 @ThreadSafe
-public class RedirectingRequestExecutor implements HttpClientRequestExecutor {
+public class RedirectFacade implements HttpClientRequestExecutor {
 
     private final Log log = LogFactory.getLog(getClass());
 
@@ -71,7 +71,7 @@ public class RedirectingRequestExecutor implements HttpClientRequestExecutor {
     private final RedirectStrategy redirectStrategy;
     private final HttpRoutePlanner routePlanner;
 
-    public RedirectingRequestExecutor(
+    public RedirectFacade(
             final HttpClientRequestExecutor requestExecutor,
             final HttpRoutePlanner routePlanner,
             final RedirectStrategy redirectStrategy) {

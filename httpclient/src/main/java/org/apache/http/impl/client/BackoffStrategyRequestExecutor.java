@@ -31,16 +31,13 @@ import java.io.IOException;
 import java.lang.reflect.UndeclaredThrowableException;
 
 import org.apache.http.HttpException;
-import org.apache.http.HttpHost;
 import org.apache.http.HttpResponse;
 import org.apache.http.annotation.ThreadSafe;
 import org.apache.http.client.BackoffManager;
 import org.apache.http.client.ConnectionBackoffStrategy;
 import org.apache.http.client.HttpClientRequestExecutor;
 import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.client.params.ClientPNames;
 import org.apache.http.conn.routing.HttpRoute;
-import org.apache.http.conn.routing.HttpRoutePlanner;
 import org.apache.http.protocol.HttpContext;
 
 /**
@@ -50,21 +47,16 @@ import org.apache.http.protocol.HttpContext;
 public class BackoffStrategyRequestExecutor implements HttpClientRequestExecutor {
 
     private final HttpClientRequestExecutor requestExecutor;
-    private final HttpRoutePlanner routePlanner;
     private final ConnectionBackoffStrategy connectionBackoffStrategy;
     private final BackoffManager backoffManager;
 
     public BackoffStrategyRequestExecutor(
             final HttpClientRequestExecutor requestExecutor,
-            final HttpRoutePlanner routePlanner,
             final ConnectionBackoffStrategy connectionBackoffStrategy,
             final BackoffManager backoffManager) {
         super();
         if (requestExecutor == null) {
             throw new IllegalArgumentException("HTTP client request executor may not be null");
-        }
-        if (routePlanner == null) {
-            throw new IllegalArgumentException("HTTP route planner may not be null");
         }
         if (connectionBackoffStrategy == null) {
             throw new IllegalArgumentException("Connection backoff strategy may not be null");
@@ -73,25 +65,20 @@ public class BackoffStrategyRequestExecutor implements HttpClientRequestExecutor
             throw new IllegalArgumentException("Backoff manager may not be null");
         }
         this.requestExecutor = requestExecutor;
-        this.routePlanner = routePlanner;
         this.connectionBackoffStrategy = connectionBackoffStrategy;
         this.backoffManager = backoffManager;
     }
 
     public HttpResponse execute(
-            final HttpHost target, 
-            final HttpUriRequest request, 
+            final HttpRoute route,
+            final HttpUriRequest request,
             final HttpContext context) throws IOException, HttpException {
         if (request == null) {
             throw new IllegalArgumentException("Request may not be null");
         }
-        HttpHost targetForRoute = (target != null) ? target
-                : (HttpHost) request.getParams().getParameter(ClientPNames.DEFAULT_HOST);
-        HttpRoute route = this.routePlanner.determineRoute(targetForRoute, request, context);
-
         HttpResponse out;
         try {
-            out = this.requestExecutor.execute(target, request, context);
+            out = this.requestExecutor.execute(route, request, context);
         } catch (RuntimeException ex) {
             if (this.connectionBackoffStrategy.shouldBackoff(ex)) {
                 this.backoffManager.backOff(route);

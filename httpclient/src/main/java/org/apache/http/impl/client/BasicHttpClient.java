@@ -40,12 +40,17 @@ import org.apache.http.HttpHost;
 import org.apache.http.HttpRequest;
 import org.apache.http.HttpResponse;
 import org.apache.http.annotation.ThreadSafe;
+import org.apache.http.auth.AuthState;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.HttpClientRequestExecutor;
 import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.client.params.ClientPNames;
+import org.apache.http.client.protocol.ClientContext;
 import org.apache.http.client.utils.URIUtils;
+import org.apache.http.conn.routing.HttpRoute;
+import org.apache.http.conn.routing.HttpRoutePlanner;
 import org.apache.http.protocol.BasicHttpContext;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.util.EntityUtils;
@@ -59,17 +64,24 @@ public abstract class BasicHttpClient implements HttpClient {
     private final Log log = LogFactory.getLog(getClass());
 
     private final HttpClientRequestExecutor requestExecutor;
+    private final HttpRoutePlanner routePlanner;
 
-    public BasicHttpClient(final HttpClientRequestExecutor requestExecutor) {
+    public BasicHttpClient(
+            final HttpClientRequestExecutor requestExecutor,
+            final HttpRoutePlanner routePlanner) {
         super();
         if (requestExecutor == null) {
             throw new IllegalArgumentException("HTTP client request executor may not be null");
         }
+        if (routePlanner == null) {
+            throw new IllegalArgumentException("HTTP route planner may not be null");
+        }
         this.requestExecutor = requestExecutor;
+        this.routePlanner = routePlanner;
     }
 
     public final HttpResponse execute(
-            final HttpUriRequest request, 
+            final HttpUriRequest request,
             final HttpContext context) throws IOException, ClientProtocolException {
         if (request == null) {
             throw new IllegalArgumentException("Request must not be null.");
@@ -93,28 +105,54 @@ public abstract class BasicHttpClient implements HttpClient {
         return target;
     }
 
+    private HttpRoute determineRoute(
+            final HttpHost target,
+            final HttpRequest request,
+            final HttpContext context) throws HttpException {
+        HttpHost host = target;
+        if (host == null) {
+            host = (HttpHost) request.getParams().getParameter(ClientPNames.DEFAULT_HOST);
+        }
+        if (host == null) {
+            throw new IllegalStateException("Target host may not be null");
+        }
+        return this.routePlanner.determineRoute(host, request, context);
+    }
+
+    private void setupContext(final HttpContext context) {
+        if (context.getAttribute(ClientContext.TARGET_AUTH_STATE) == null) {
+            context.setAttribute(ClientContext.TARGET_AUTH_STATE, new AuthState());
+        }
+        if (context.getAttribute(ClientContext.PROXY_AUTH_STATE) == null) {
+            context.setAttribute(ClientContext.PROXY_AUTH_STATE, new AuthState());
+        }
+    }
+
     public final HttpResponse execute(
-            final HttpHost target, 
+            final HttpHost target,
             final HttpRequest request) throws IOException, ClientProtocolException {
         return execute(target, request, (HttpContext) null);
     }
 
     public final HttpResponse execute(
-            final HttpHost target, 
-            final HttpRequest request, 
+            final HttpHost target,
+            final HttpRequest request,
             final HttpContext context) throws IOException, ClientProtocolException {
         if (request == null) {
             throw new IllegalArgumentException("Request must not be null.");
         }
         try {
             HttpContext execContext = context != null ? context : new BasicHttpContext();
+            setupContext(context);
             RequestWrapper wrapper;
             if (request instanceof HttpEntityEnclosingRequest) {
                 wrapper = new EntityEnclosingRequestWrapper((HttpEntityEnclosingRequest) request);
             } else {
                 wrapper = new RequestWrapper(request);
             }
-            return this.requestExecutor.execute(target, wrapper, execContext);
+            request.setParams(new ClientParamsStack(null, getParams(), request.getParams(), null));
+            HttpRoute route = determineRoute(target, request, context);
+            return this.requestExecutor.execute(route, wrapper, execContext);
         } catch (HttpException httpException) {
             throw new ClientProtocolException(httpException);
         }

@@ -50,8 +50,6 @@ import org.apache.http.auth.AuthState;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.AuthenticationStrategy;
 import org.apache.http.client.HttpClientRequestExecutor;
-import org.apache.http.client.HttpRequestRetryHandler;
-import org.apache.http.client.NonRepeatableRequestException;
 import org.apache.http.client.UserTokenHandler;
 import org.apache.http.client.methods.AbortableHttpRequest;
 import org.apache.http.client.methods.HttpUriRequest;
@@ -67,7 +65,6 @@ import org.apache.http.conn.ManagedClientConnection;
 import org.apache.http.conn.routing.BasicRouteDirector;
 import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.conn.routing.HttpRouteDirector;
-import org.apache.http.conn.routing.HttpRoutePlanner;
 import org.apache.http.conn.scheme.Scheme;
 import org.apache.http.entity.BufferedHttpEntity;
 import org.apache.http.impl.auth.BasicScheme;
@@ -118,18 +115,16 @@ import org.apache.http.util.EntityUtils;
  *
  * @since 4.3
  */
-@ThreadSafe // e.g. managedConn
+@ThreadSafe
 public class MainRequestExecutor implements HttpClientRequestExecutor {
 
     private final Log log = LogFactory.getLog(getClass());
 
     private final ClientConnectionManager connManager;
-    private final HttpRoutePlanner routePlanner;
     private final ConnectionReuseStrategy reuseStrategy;
     private final ConnectionKeepAliveStrategy keepAliveStrategy;
     private final HttpRequestExecutor requestExec;
     private final HttpProcessor httpProcessor;
-    private final HttpRequestRetryHandler retryHandler;
     private final AuthenticationStrategy targetAuthStrategy;
     private final AuthenticationStrategy proxyAuthStrategy;
     private final HttpAuthenticator authenticator;
@@ -137,33 +132,25 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
     private final HttpParams params;
 
     public MainRequestExecutor(
-            final ClientConnectionManager conman,
-            final ConnectionReuseStrategy reustrat,
-            final ConnectionKeepAliveStrategy kastrat,
-            final HttpRoutePlanner rouplan,
             final HttpProcessor httpProcessor,
-            final HttpRequestRetryHandler retryHandler,
+            final ClientConnectionManager connManager,
+            final ConnectionReuseStrategy reuseStrategy,
+            final ConnectionKeepAliveStrategy keepAliveStrategy,
             final AuthenticationStrategy targetAuthStrategy,
             final AuthenticationStrategy proxyAuthStrategy,
             final UserTokenHandler userTokenHandler,
             final HttpParams params) {
-        if (conman == null) {
-            throw new IllegalArgumentException("Client connection manager may not be null");
-        }
-        if (reustrat == null) {
-            throw new IllegalArgumentException("Connection reuse strategy may not be null");
-        }
-        if (kastrat == null) {
-            throw new IllegalArgumentException("Connection keep alive strategy may not be null");
-        }
-        if (rouplan == null) {
-            throw new IllegalArgumentException("Route planner may not be null");
-        }
         if (httpProcessor == null) {
             throw new IllegalArgumentException("HTTP protocol processor may not be null");
         }
-        if (retryHandler == null) {
-            throw new IllegalArgumentException("HTTP request retry handler may not be null");
+        if (connManager == null) {
+            throw new IllegalArgumentException("Client connection manager may not be null");
+        }
+        if (reuseStrategy == null) {
+            throw new IllegalArgumentException("Connection reuse strategy may not be null");
+        }
+        if (keepAliveStrategy == null) {
+            throw new IllegalArgumentException("Connection keep alive strategy may not be null");
         }
         if (targetAuthStrategy == null) {
             throw new IllegalArgumentException("Target authentication strategy may not be null");
@@ -177,14 +164,12 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
         if (params == null) {
             throw new IllegalArgumentException("HTTP parameters may not be null");
         }
-        this.authenticator      = new HttpAuthenticator(log);
+        this.authenticator      = new HttpAuthenticator();
         this.requestExec        = new HttpRequestExecutor();
-        this.connManager        = conman;
-        this.reuseStrategy      = reustrat;
-        this.keepAliveStrategy  = kastrat;
-        this.routePlanner       = rouplan;
         this.httpProcessor      = httpProcessor;
-        this.retryHandler       = retryHandler;
+        this.connManager        = connManager;
+        this.reuseStrategy      = reuseStrategy;
+        this.keepAliveStrategy  = keepAliveStrategy;
         this.targetAuthStrategy = targetAuthStrategy;
         this.proxyAuthStrategy  = proxyAuthStrategy;
         this.userTokenHandler   = userTokenHandler;
@@ -206,14 +191,12 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
             final RequestWrapper request,
             final HttpRoute route) throws ProtocolException {
         try {
-
             URI uri = request.getURI();
             if (route.getProxyHost() != null && !route.isTunnelled()) {
                 // Make sure the request URI is absolute
                 if (!uri.isAbsolute()) {
                     HttpHost target = route.getTargetHost();
                     uri = URIUtils.rewriteURI(uri, target, true);
-                    request.setURI(uri);
                 } else {
                     uri = URIUtils.rewriteURI(uri);
                 }
@@ -221,12 +204,11 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                 // Make sure the request URI is relative
                 if (uri.isAbsolute()) {
                     uri = URIUtils.rewriteURI(uri, null);
-                    request.setURI(uri);
                 } else {
                     uri = URIUtils.rewriteURI(uri);
                 }
             }
-
+            request.setURI(uri);
         } catch (URISyntaxException ex) {
             throw new ProtocolException("Invalid URI: " +
                     request.getRequestLine().getUri(), ex);
@@ -234,58 +216,56 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
     }
 
     public HttpResponse execute(
-            final HttpHost target, 
+            final HttpRoute route,
             final HttpUriRequest request,
             final HttpContext context) throws HttpException, IOException {
 
-        AuthState targetAuthState = new AuthState();
-        AuthState proxyAuthState = new AuthState();
-        
-        context.setAttribute(ClientContext.TARGET_AUTH_STATE, targetAuthState);
-        context.setAttribute(ClientContext.PROXY_AUTH_STATE, proxyAuthState);
-
-        HttpRequest orig = request;
-        RequestWrapper origWrapper = wrapRequest(orig);
-        origWrapper.setParams(params);
-        HttpRoute origRoute = determineRoute(target, origWrapper, context);
-
-        HttpHost virtualHost = (HttpHost) origWrapper.getParams().getParameter(ClientPNames.VIRTUAL_HOST);
-
-        // HTTPCLIENT-1092 - add the port if necessary
-        if (virtualHost != null && virtualHost.getPort() == -1) {
-            int port = target.getPort();
-            if (port != -1){
-                virtualHost = new HttpHost(virtualHost.getHostName(), port, virtualHost.getSchemeName());
-            }
+        AuthState targetAuthState = (AuthState) context.getAttribute(ClientContext.TARGET_AUTH_STATE);
+        if (targetAuthState == null) {
+            targetAuthState = new AuthState();
         }
-        
-        ManagedClientConnection managedConn = null;
+        AuthState proxyAuthState = (AuthState) context.getAttribute(ClientContext.PROXY_AUTH_STATE);
+        if (proxyAuthState == null) {
+            proxyAuthState = new AuthState();
+        }
 
-        RoutedRequest roureq = new RoutedRequest(origWrapper, origRoute);
+        RequestWrapper wrapper = wrapRequest(request);
+        wrapper.setParams(params);
+
+        HttpHost target = route.getTargetHost();
+        HttpHost proxy = route.getProxyHost();
+
+        HttpHost virtualHost = null;
+//        if (!crossSiteRedirect) {
+            virtualHost = (HttpHost) wrapper.getParams().getParameter(ClientPNames.VIRTUAL_HOST);
+            // HTTPCLIENT-1092 - add the port if necessary
+            if (virtualHost != null && virtualHost.getPort() == -1) {
+                int port = target.getPort();
+                if (port != -1){
+                    virtualHost = new HttpHost(virtualHost.getHostName(), port, virtualHost.getSchemeName());
+                }
+            }
+//        }
+
+        context.setAttribute(ExecutionContext.HTTP_TARGET_HOST, virtualHost != null ? virtualHost : target);
+        context.setAttribute(ExecutionContext.HTTP_PROXY_HOST, proxy);
+
+        Object userToken = context.getAttribute(ClientContext.USER_TOKEN);
+
+        ManagedClientConnection managedConn = null;
+        RoutedRequest roureq = new RoutedRequest(wrapper, route);
 
         boolean reuse = false;
-        boolean done = false;
         try {
             HttpResponse response = null;
-            while (!done) {
-                // In this loop, the RoutedRequest may be replaced by a
-                // followup request and route. The request and route passed
-                // in the method arguments will be replaced. The original
-                // request is still available in 'orig'.
-
-                RequestWrapper wrapper = roureq.getRequest();
-                HttpRoute route = roureq.getRoute();
-                response = null;
-
-                // See if we have a user token bound to the execution context
-                Object userToken = context.getAttribute(ClientContext.USER_TOKEN);
+            for (;;) {
 
                 // Allocate connection if needed
                 if (managedConn == null) {
                     ClientConnectionRequest connRequest = connManager.requestConnection(
                             route, userToken);
-                    if (orig instanceof AbortableHttpRequest) {
-                        ((AbortableHttpRequest) orig).setConnectionRequest(connRequest);
+                    if (request instanceof AbortableHttpRequest) {
+                        ((AbortableHttpRequest) request).setConnectionRequest(connRequest);
                     }
 
                     long timeout = HttpClientParams.getConnectionManagerTimeout(params);
@@ -309,12 +289,20 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                     }
                 }
 
-                if (orig instanceof AbortableHttpRequest) {
-                    ((AbortableHttpRequest) orig).setReleaseTrigger(managedConn);
+                if (request instanceof AbortableHttpRequest) {
+                    ((AbortableHttpRequest) request).setReleaseTrigger(managedConn);
                 }
 
+                if (!managedConn.isOpen()) {
+                    managedConn.open(route, context, params);
+                } else {
+                    managedConn.setSocketTimeout(HttpConnectionParams.getSoTimeout(params));
+                }
+
+                context.setAttribute(ExecutionContext.HTTP_CONNECTION, managedConn);
+
                 try {
-                    tryConnect(proxyAuthState, managedConn, roureq, context);
+                    establishRoute(proxyAuthState, managedConn, route, context);
                 } catch (TunnelRefusedException ex) {
                     if (this.log.isDebugEnabled()) {
                         this.log.debug(ex.getMessage());
@@ -335,32 +323,13 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                 // Re-write request URI if needed
                 rewriteRequestURI(wrapper, route);
 
-                // Use virtual host if set
-                HttpHost host = virtualHost;
-                if (host == null) {
-                    host = route.getTargetHost();
-                }
-
-                HttpHost proxy = route.getProxyHost();
-
-                // Populate the execution context
-                context.setAttribute(ExecutionContext.HTTP_TARGET_HOST, host);
-                context.setAttribute(ExecutionContext.HTTP_PROXY_HOST, proxy);
-                context.setAttribute(ExecutionContext.HTTP_CONNECTION, managedConn);
-
                 // Run request protocol interceptors
                 requestExec.preProcess(wrapper, httpProcessor, context);
 
-                response = tryExecute(managedConn, roureq, context);
-                if (response == null) {
-                    // Need to start over
-                    continue;
-                }
+                response = requestExec.execute(wrapper, managedConn, context);
 
                 // Run response protocol interceptors
-                response.setParams(params);
                 requestExec.postProcess(response, httpProcessor, context);
-
 
                 // The connection is in or can be brought to a re-usable state.
                 reuse = reuseStrategy.keepAlive(response, context);
@@ -379,11 +348,7 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                     managedConn.setIdleDuration(duration, TimeUnit.MILLISECONDS);
                 }
 
-                RoutedRequest followup = handleResponse(targetAuthState, proxyAuthState, 
-                        roureq, response, context);
-                if (followup == null) {
-                    done = true;
-                } else {
+                if (needAuthentication(targetAuthState, proxyAuthState, roureq, response, context)) {
                     if (reuse) {
                         // Make sure the response body is fully consumed, if present
                         HttpEntity entity = response.getEntity();
@@ -406,39 +371,34 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                             targetAuthState.reset();
                         }
                     }
-                    // check if we can use the same connection for the followup
-                    if (!followup.getRoute().equals(roureq.getRoute())) {
-                        releaseConnection(managedConn);
-                        managedConn = null;
-                    }
-                    roureq = followup;
                 }
+            }
 
-                if (managedConn != null) {
-                    if (userToken == null) {
-                        userToken = userTokenHandler.getUserToken(context);
-                        context.setAttribute(ClientContext.USER_TOKEN, userToken);
-                    }
-                    if (userToken != null) {
-                        managedConn.setState(userToken);
-                    }
+            if (managedConn != null) {
+                if (userToken == null) {
+                    userToken = userTokenHandler.getUserToken(context);
+                    context.setAttribute(ClientContext.USER_TOKEN, userToken);
                 }
-
-            } // while not done
-
+                if (userToken != null) {
+                    managedConn.setState(userToken);
+                }
+            }
 
             // check for entity, release connection if possible
-            if ((response == null) || (response.getEntity() == null) ||
-                !response.getEntity().isStreaming()) {
+            HttpEntity entity = response.getEntity();
+            if (entity == null || !entity.isStreaming()) {
                 // connection not needed and (assumed to be) in re-usable state
                 if (reuse) {
                     managedConn.markReusable();
                 }
-                releaseConnection(managedConn);
+                try {
+                    managedConn.releaseConnection();
+                } catch(IOException ex) {
+                    this.log.debug("IOException releasing connection", ex);
+                }
                 managedConn = null;
             } else {
                 // install an auto-release entity
-                HttpEntity entity = response.getEntity();
                 entity = new BasicManagedEntity(entity, managedConn, reuse);
                 response.setEntity(entity);
             }
@@ -463,164 +423,12 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
     }
 
     /**
-     * Establish connection either directly or through a tunnel and retry in case of
-     * a recoverable I/O failure
-     */
-    private void tryConnect(
-            final AuthState proxyAuthState,
-            final ManagedClientConnection managedConn,
-            final RoutedRequest req, 
-            final HttpContext context) throws HttpException, IOException {
-        HttpRoute route = req.getRoute();
-        HttpRequest wrapper = req.getRequest();
-
-        int connectCount = 0;
-        for (;;) {
-            context.setAttribute(ExecutionContext.HTTP_REQUEST, wrapper);
-            // Increment connect count
-            connectCount++;
-            try {
-                if (!managedConn.isOpen()) {
-                    managedConn.open(route, context, params);
-                } else {
-                    managedConn.setSocketTimeout(HttpConnectionParams.getSoTimeout(params));
-                }
-                establishRoute(proxyAuthState, managedConn, route, context);
-                break;
-            } catch (IOException ex) {
-                try {
-                    managedConn.close();
-                } catch (IOException ignore) {
-                }
-                if (retryHandler.retryRequest(ex, connectCount, context)) {
-                    if (this.log.isInfoEnabled()) {
-                        this.log.info("I/O exception ("+ ex.getClass().getName() +
-                                ") caught when connecting to the target host: "
-                                + ex.getMessage());
-                        if (this.log.isDebugEnabled()) {
-                            this.log.debug(ex.getMessage(), ex);
-                        }
-                        this.log.info("Retrying connect");
-                    }
-                } else {
-                    throw ex;
-                }
-            }
-        }
-    }
-
-    /**
-     * Execute request and retry in case of a recoverable I/O failure
-     */
-    private HttpResponse tryExecute(
-            final ManagedClientConnection managedConn,
-            final RoutedRequest req, 
-            final HttpContext context) throws HttpException, IOException {
-        RequestWrapper wrapper = req.getRequest();
-        HttpRoute route = req.getRoute();
-        HttpResponse response = null;
-
-        int execCount = 0;
-        Exception retryReason = null;
-        for (;;) {
-            // Increment total exec count (with redirects)
-            execCount++;
-            // Increment exec count for this particular request
-            wrapper.incrementExecCount();
-            if (!wrapper.isRepeatable()) {
-                this.log.debug("Cannot retry non-repeatable request");
-                if (retryReason != null) {
-                    throw new NonRepeatableRequestException("Cannot retry request " +
-                        "with a non-repeatable request entity.  The cause lists the " +
-                        "reason the original request failed.", retryReason);
-                } else {
-                    throw new NonRepeatableRequestException("Cannot retry request " +
-                            "with a non-repeatable request entity.");
-                }
-            }
-
-            try {
-                if (!managedConn.isOpen()) {
-                    // If we have a direct route to the target host
-                    // just re-open connection and re-try the request
-                    if (!route.isTunnelled()) {
-                        this.log.debug("Reopening the direct connection.");
-                        managedConn.open(route, context, params);
-                    } else {
-                        // otherwise give up
-                        this.log.debug("Proxied connection. Need to start over.");
-                        break;
-                    }
-                }
-
-                if (this.log.isDebugEnabled()) {
-                    this.log.debug("Attempt " + execCount + " to execute request");
-                }
-                response = requestExec.execute(wrapper, managedConn, context);
-                break;
-
-            } catch (IOException ex) {
-                this.log.debug("Closing the connection.");
-                try {
-                    managedConn.close();
-                } catch (IOException ignore) {
-                }
-                if (retryHandler.retryRequest(ex, wrapper.getExecCount(), context)) {
-                    if (this.log.isInfoEnabled()) {
-                        this.log.info("I/O exception ("+ ex.getClass().getName() +
-                                ") caught when processing request: "
-                                + ex.getMessage());
-                    }
-                    if (this.log.isDebugEnabled()) {
-                        this.log.debug(ex.getMessage(), ex);
-                    }
-                    this.log.info("Retrying request");
-                    retryReason = ex;
-                } else {
-                    throw ex;
-                }
-            }
-        }
-        return response;
-    }
-
-    private void releaseConnection(final ManagedClientConnection managedConn) {
-        // Release the connection through the ManagedConnection instead of the
-        // ConnectionManager directly.  This lets the connection control how
-        // it is released.
-        try {
-            managedConn.releaseConnection();
-        } catch(IOException ignored) {
-            this.log.debug("IOException releasing connection", ignored);
-        }
-    }
-
-    /**
-     * Determines the route for a request.
-     * Called by {@link #execute}
-     * to determine the route for either the original or a followup request.
-     */
-    private HttpRoute determineRoute(
-            final HttpHost target,
-            final HttpRequest request,
-            final HttpContext context) throws HttpException {
-        HttpHost host = target;
-        if (host == null) {
-            host = (HttpHost) request.getParams().getParameter(ClientPNames.DEFAULT_HOST);
-        }
-        if (host == null) {
-            throw new IllegalStateException("Target host may not be null");
-        }
-        return this.routePlanner.determineRoute(host, request, context);
-    }
-
-    /**
      * Establishes the target route.
      */
     private void establishRoute(
             final AuthState proxyAuthState,
             final ManagedClientConnection managedConn,
-            final HttpRoute route, 
+            final HttpRoute route,
             final HttpContext context) throws HttpException, IOException {
 
         HttpRouteDirector rowdy = new BasicRouteDirector();
@@ -688,7 +496,6 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
             final HttpContext context) throws HttpException, IOException {
 
         HttpHost proxy = route.getProxyHost();
-        HttpHost target = route.getTargetHost();
         HttpResponse response = null;
 
         for (;;) {
@@ -700,9 +507,6 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
             connect.setParams(this.params);
 
             // Populate the execution context
-            context.setAttribute(ExecutionContext.HTTP_TARGET_HOST, target);
-            context.setAttribute(ExecutionContext.HTTP_PROXY_HOST, proxy);
-            context.setAttribute(ExecutionContext.HTTP_CONNECTION, managedConn);
             context.setAttribute(ExecutionContext.HTTP_REQUEST, connect);
 
             this.requestExec.preProcess(connect, this.httpProcessor, context);
@@ -771,7 +575,7 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
      * It just throws an exception here.
      */
     private boolean createTunnelToProxy(
-            final HttpRoute route, 
+            final HttpRoute route,
             final int hop,
             final HttpContext context) throws HttpException, IOException {
 
@@ -819,10 +623,7 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
         return req;
     }
 
-    /**
-     * Analyzes a response to check need for a followup.
-     */
-    private RoutedRequest handleResponse(
+    private boolean needAuthentication(
             final AuthState targetAuthState,
             final AuthState proxyAuthState,
             final RoutedRequest roureq,
@@ -844,28 +645,17 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
             }
             if (this.authenticator.isAuthenticationRequested(target, response,
                     this.targetAuthStrategy, targetAuthState, context)) {
-                if (this.authenticator.authenticate(target, response,
-                        this.targetAuthStrategy, targetAuthState, context)) {
-                    // Re-try the same request via the same route
-                    return roureq;
-                } else {
-                    return null;
-                }
+                return this.authenticator.authenticate(target, response,
+                        this.targetAuthStrategy, targetAuthState, context);
             }
-
             HttpHost proxy = route.getProxyHost();
             if (this.authenticator.isAuthenticationRequested(proxy, response,
                     this.proxyAuthStrategy, proxyAuthState, context)) {
-                if (this.authenticator.authenticate(proxy, response,
-                        this.proxyAuthStrategy, proxyAuthState, context)) {
-                    // Re-try the same request via the same route
-                    return roureq;
-                } else {
-                    return null;
-                }
+                return this.authenticator.authenticate(proxy, response,
+                        this.proxyAuthStrategy, proxyAuthState, context);
             }
         }
-        return null;
+        return false;
     }
 
     /**

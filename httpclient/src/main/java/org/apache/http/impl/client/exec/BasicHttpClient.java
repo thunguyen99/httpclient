@@ -25,7 +25,7 @@
  *
  */
 
-package org.apache.http.impl.client;
+package org.apache.http.impl.client.exec;
 
 import java.io.IOException;
 import java.lang.reflect.UndeclaredThrowableException;
@@ -51,6 +51,9 @@ import org.apache.http.client.protocol.ClientContext;
 import org.apache.http.client.utils.URIUtils;
 import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.conn.routing.HttpRoutePlanner;
+import org.apache.http.impl.client.ClientParamsStack;
+import org.apache.http.impl.client.EntityEnclosingRequestWrapper;
+import org.apache.http.impl.client.RequestWrapper;
 import org.apache.http.protocol.BasicHttpContext;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.util.EntityUtils;

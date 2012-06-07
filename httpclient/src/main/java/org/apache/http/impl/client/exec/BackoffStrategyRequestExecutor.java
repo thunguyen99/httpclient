@@ -25,7 +25,7 @@
  *
  */
 
-package org.apache.http.impl.client;
+package org.apache.http.impl.client.exec;
 
 import java.io.IOException;
 import java.lang.reflect.UndeclaredThrowableException;

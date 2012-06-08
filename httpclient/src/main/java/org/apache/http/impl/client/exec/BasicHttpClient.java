@@ -34,7 +34,6 @@ import java.net.URI;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.http.HttpEntity;
-import org.apache.http.HttpEntityEnclosingRequest;
 import org.apache.http.HttpException;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpRequest;
@@ -43,7 +42,6 @@ import org.apache.http.annotation.ThreadSafe;
 import org.apache.http.auth.AuthState;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
-import org.apache.http.client.HttpClientRequestExecutor;
 import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.client.params.ClientPNames;
@@ -52,8 +50,7 @@ import org.apache.http.client.utils.URIUtils;
 import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.conn.routing.HttpRoutePlanner;
 import org.apache.http.impl.client.ClientParamsStack;
-import org.apache.http.impl.client.EntityEnclosingRequestWrapper;
-import org.apache.http.impl.client.RequestWrapper;
+import org.apache.http.params.HttpParams;
 import org.apache.http.protocol.BasicHttpContext;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.util.EntityUtils;
@@ -147,13 +144,13 @@ public abstract class BasicHttpClient implements HttpClient {
         try {
             HttpContext execContext = context != null ? context : new BasicHttpContext();
             setupContext(context);
-            RequestWrapper wrapper;
-            if (request instanceof HttpEntityEnclosingRequest) {
-                wrapper = new EntityEnclosingRequestWrapper((HttpEntityEnclosingRequest) request);
-            } else {
-                wrapper = new RequestWrapper(request);
-            }
-            request.setParams(new ClientParamsStack(null, getParams(), request.getParams(), null));
+            HttpParams params = new ClientParamsStack(null, getParams(), request.getParams(), null);
+            HttpHost virtualHost = (HttpHost) params.getParameter(ClientPNames.VIRTUAL_HOST);
+
+            HttpRequestWrapper wrapper = HttpRequestWrapper.wrap(request);
+            wrapper.setParams(params);
+            wrapper.setVirtualHost(virtualHost);
+
             HttpRoute route = determineRoute(target, request, context);
             return this.requestExecutor.execute(route, wrapper, execContext);
         } catch (HttpException httpException) {

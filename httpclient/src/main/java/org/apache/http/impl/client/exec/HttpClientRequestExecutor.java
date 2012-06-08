@@ -25,13 +25,12 @@
  *
  */
 
-package org.apache.http.client;
+package org.apache.http.impl.client.exec;
 
 import java.io.IOException;
 
 import org.apache.http.HttpException;
 import org.apache.http.HttpResponse;
-import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.protocol.HttpContext;
 
@@ -40,7 +39,9 @@ import org.apache.http.protocol.HttpContext;
  */
 public interface HttpClientRequestExecutor {
 
-    HttpResponse execute(HttpRoute route, HttpUriRequest request, HttpContext context)
-        throws IOException, HttpException;
+    HttpResponse execute(
+            HttpRoute route, 
+            HttpRequestWrapper request, 
+            HttpContext context) throws IOException, HttpException;
 
 }

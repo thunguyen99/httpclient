@@ -35,8 +35,6 @@ import org.apache.http.HttpResponse;
 import org.apache.http.annotation.ThreadSafe;
 import org.apache.http.client.BackoffManager;
 import org.apache.http.client.ConnectionBackoffStrategy;
-import org.apache.http.client.HttpClientRequestExecutor;
-import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.protocol.HttpContext;
 
@@ -71,7 +69,7 @@ public class BackoffStrategyFacade implements HttpClientRequestExecutor {
 
     public HttpResponse execute(
             final HttpRoute route,
-            final HttpUriRequest request,
+            final HttpRequestWrapper request,
             final HttpContext context) throws IOException, HttpException {
         if (request == null) {
             throw new IllegalArgumentException("Request may not be null");

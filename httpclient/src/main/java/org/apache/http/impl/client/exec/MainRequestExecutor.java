@@ -36,8 +36,8 @@ import java.util.concurrent.TimeUnit;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.http.ConnectionReuseStrategy;
+import org.apache.http.Header;
 import org.apache.http.HttpEntity;
-import org.apache.http.HttpEntityEnclosingRequest;
 import org.apache.http.HttpException;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpRequest;
@@ -49,11 +49,9 @@ import org.apache.http.auth.AuthProtocolState;
 import org.apache.http.auth.AuthState;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.AuthenticationStrategy;
-import org.apache.http.client.HttpClientRequestExecutor;
+import org.apache.http.client.NonRepeatableRequestException;
 import org.apache.http.client.UserTokenHandler;
 import org.apache.http.client.methods.AbortableHttpRequest;
-import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.client.params.ClientPNames;
 import org.apache.http.client.params.HttpClientParams;
 import org.apache.http.client.protocol.ClientContext;
 import org.apache.http.client.utils.URIUtils;
@@ -68,10 +66,7 @@ import org.apache.http.conn.routing.HttpRouteDirector;
 import org.apache.http.conn.scheme.Scheme;
 import org.apache.http.entity.BufferedHttpEntity;
 import org.apache.http.impl.auth.BasicScheme;
-import org.apache.http.impl.client.EntityEnclosingRequestWrapper;
 import org.apache.http.impl.client.HttpAuthenticator;
-import org.apache.http.impl.client.RequestWrapper;
-import org.apache.http.impl.client.RoutedRequest;
 import org.apache.http.impl.client.TunnelRefusedException;
 import org.apache.http.impl.conn.ConnectionShutdownException;
 import org.apache.http.message.BasicHttpRequest;
@@ -181,19 +176,8 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
         this.params             = params;
     }
 
-    private RequestWrapper wrapRequest(
-            final HttpRequest request) throws ProtocolException {
-        if (request instanceof HttpEntityEnclosingRequest) {
-            return new EntityEnclosingRequestWrapper(
-                    (HttpEntityEnclosingRequest) request);
-        } else {
-            return new RequestWrapper(
-                    request);
-        }
-    }
-
     private void rewriteRequestURI(
-            final RequestWrapper request,
+            final HttpRequestWrapper request,
             final HttpRoute route) throws ProtocolException {
         try {
             URI uri = request.getURI();
@@ -222,7 +206,7 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
 
     public HttpResponse execute(
             final HttpRoute route,
-            final HttpUriRequest request,
+            final HttpRequestWrapper request,
             final HttpContext context) throws HttpException, IOException {
 
         AuthState targetAuthState = (AuthState) context.getAttribute(ClientContext.TARGET_AUTH_STATE);
@@ -234,23 +218,23 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
             proxyAuthState = new AuthState();
         }
 
-        RequestWrapper wrapper = wrapRequest(request);
-        wrapper.setParams(params);
-
         HttpHost target = route.getTargetHost();
         HttpHost proxy = route.getProxyHost();
 
-        HttpHost virtualHost = null;
-//        if (!crossSiteRedirect) {
-            virtualHost = (HttpHost) wrapper.getParams().getParameter(ClientPNames.VIRTUAL_HOST);
-            // HTTPCLIENT-1092 - add the port if necessary
-            if (virtualHost != null && virtualHost.getPort() == -1) {
-                int port = target.getPort();
-                if (port != -1){
-                    virtualHost = new HttpHost(virtualHost.getHostName(), port, virtualHost.getSchemeName());
-                }
+        // Save original request headers
+        Header[] origheaders = request.getAllHeaders();
+
+        // Re-write request URI if needed
+        rewriteRequestURI(request, route);
+
+        HttpHost virtualHost = request.getVirtualHost();
+        // HTTPCLIENT-1092 - add the port if necessary
+        if (virtualHost != null && virtualHost.getPort() == -1) {
+            int port = target.getPort();
+            if (port != -1){
+                virtualHost = new HttpHost(virtualHost.getHostName(), port, virtualHost.getSchemeName());
             }
-//        }
+        }
 
         context.setAttribute(ExecutionContext.HTTP_TARGET_HOST, virtualHost != null ? virtualHost : target);
         context.setAttribute(ExecutionContext.HTTP_PROXY_HOST, proxy);
@@ -258,12 +242,16 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
         Object userToken = context.getAttribute(ClientContext.USER_TOKEN);
 
         ManagedClientConnection managedConn = null;
-        RoutedRequest roureq = new RoutedRequest(wrapper, route);
 
         boolean reuse = false;
         try {
             HttpResponse response = null;
-            for (;;) {
+            for (int execCount = 1;; execCount++) {
+
+                if (execCount > 1 && !request.isRepeatable()) {
+                    throw new NonRepeatableRequestException("Cannot retry request " +
+                            "with a non-repeatable request entity.");
+                }
 
                 // Allocate connection if needed
                 if (managedConn == null) {
@@ -316,22 +304,17 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                     break;
                 }
 
-                String userinfo = wrapper.getURI().getUserInfo();
+                String userinfo = request.getURI().getUserInfo();
                 if (userinfo != null) {
                     targetAuthState.update(
                             new BasicScheme(), new UsernamePasswordCredentials(userinfo));
                 }
 
-                // Reset headers on the request wrapper
-                wrapper.resetHeaders();
-
-                // Re-write request URI if needed
-                rewriteRequestURI(wrapper, route);
-
                 // Run request protocol interceptors
-                requestExec.preProcess(wrapper, httpProcessor, context);
+                requestExec.preProcess(request, httpProcessor, context);
 
-                response = requestExec.execute(wrapper, managedConn, context);
+                response = requestExec.execute(request, managedConn, context);
+                response.setParams(params);
 
                 // Run response protocol interceptors
                 requestExec.postProcess(response, httpProcessor, context);
@@ -353,7 +336,8 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                     managedConn.setIdleDuration(duration, TimeUnit.MILLISECONDS);
                 }
 
-                if (needAuthentication(targetAuthState, proxyAuthState, roureq, response, context)) {
+                if (needAuthentication(
+                        targetAuthState, proxyAuthState, route, request, response, context)) {
                     if (reuse) {
                         // Make sure the response body is fully consumed, if present
                         HttpEntity entity = response.getEntity();
@@ -376,6 +360,10 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                             targetAuthState.reset();
                         }
                     }
+                    // discard all headers and retry request
+                    request.setHeaders(origheaders);
+                } else {
+                    break;
                 }
             }
 
@@ -631,12 +619,10 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
     private boolean needAuthentication(
             final AuthState targetAuthState,
             final AuthState proxyAuthState,
-            final RoutedRequest roureq,
+            final HttpRoute route,
+            final HttpRequestWrapper request,
             final HttpResponse response,
             final HttpContext context) throws HttpException, IOException {
-
-        HttpRoute route = roureq.getRoute();
-        RequestWrapper request = roureq.getRequest();
 
         HttpParams params = request.getParams();
         if (HttpClientParams.isAuthenticating(params)) {

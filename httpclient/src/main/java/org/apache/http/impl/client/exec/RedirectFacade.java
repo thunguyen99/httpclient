@@ -34,15 +34,14 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.http.HttpException;
 import org.apache.http.HttpHost;
+import org.apache.http.HttpRequest;
 import org.apache.http.HttpResponse;
 import org.apache.http.ProtocolException;
 import org.apache.http.annotation.ThreadSafe;
 import org.apache.http.auth.AuthScheme;
 import org.apache.http.auth.AuthState;
-import org.apache.http.client.HttpClientRequestExecutor;
 import org.apache.http.client.RedirectException;
 import org.apache.http.client.RedirectStrategy;
-import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.client.params.ClientPNames;
 import org.apache.http.client.params.HttpClientParams;
 import org.apache.http.client.protocol.ClientContext;
@@ -92,13 +91,13 @@ public class RedirectFacade implements HttpClientRequestExecutor {
 
     public HttpResponse execute(
             final HttpRoute route,
-            final HttpUriRequest request,
+            final HttpRequestWrapper request,
             final HttpContext context) throws IOException, HttpException {
         HttpParams params = request.getParams();
         int redirectCount = 0;
         int maxRedirects = params.getIntParameter(ClientPNames.MAX_REDIRECTS, 100);
         HttpRoute currentRoute = route;
-        HttpUriRequest currentRequest = request;
+        HttpRequestWrapper currentRequest = request;
         for (;;) {
             HttpResponse response = requestExecutor.execute(currentRoute, currentRequest, context);
             if (HttpClientParams.isRedirecting(params) &&
@@ -109,7 +108,8 @@ public class RedirectFacade implements HttpClientRequestExecutor {
                 }
                 redirectCount++;
 
-                currentRequest = this.redirectStrategy.getRedirect(currentRequest, response, context);
+                HttpRequest redirect = this.redirectStrategy.getRedirect(currentRequest, response, context);
+                currentRequest = HttpRequestWrapper.wrap(redirect);
                 currentRequest.setHeaders(request.getAllHeaders());
                 currentRequest.setParams(params);
 
@@ -121,7 +121,7 @@ public class RedirectFacade implements HttpClientRequestExecutor {
 
                 HttpHost newTarget = new HttpHost(uri.getHost(), uri.getPort(), uri.getScheme());
 
-                // Reset auth states if redirecting to another host
+                // Reset virtual host and auth states if redirecting to another host
                 if (!currentRoute.getTargetHost().equals(newTarget)) {
                     AuthState targetAuthState = (AuthState) context.getAttribute(
                             ClientContext.TARGET_AUTH_STATE);
@@ -138,6 +138,7 @@ public class RedirectFacade implements HttpClientRequestExecutor {
                             proxyAuthState.reset();
                         }
                     }
+                    request.setVirtualHost(null);
                 }
 
                 currentRoute = this.routePlanner.determineRoute(newTarget, currentRequest, context);

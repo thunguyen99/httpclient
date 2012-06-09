@@ -27,6 +27,9 @@
 
 package org.apache.http.impl.client.exec;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 
@@ -41,6 +44,7 @@ import org.apache.http.ProtocolException;
 import org.apache.http.ProtocolVersion;
 import org.apache.http.RequestLine;
 import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.entity.HttpEntityWrapper;
 import org.apache.http.message.AbstractHttpMessage;
 import org.apache.http.message.BasicRequestLine;
 import org.apache.http.params.HttpProtocolParams;
@@ -137,6 +141,7 @@ public class HttpRequestWrapper extends AbstractHttpMessage implements HttpReque
         implements HttpEntityEnclosingRequest {
 
         private HttpEntity entity;
+        private boolean consumed;
 
         public HttpEntityEnclosingRequestWrapper(
                 final ProtocolVersion version,
@@ -153,7 +158,7 @@ public class HttpRequestWrapper extends AbstractHttpMessage implements HttpReque
         }
 
         public void setEntity(final HttpEntity entity) {
-            this.entity = entity;
+            this.entity = entity != null ? new EntityWrapper(entity) : null;
         }
 
         public boolean expectContinue() {
@@ -163,13 +168,34 @@ public class HttpRequestWrapper extends AbstractHttpMessage implements HttpReque
 
         @Override
         public boolean isRepeatable() {
-            if (this.entity != null) {
-                return this.entity.isRepeatable();
-            } else {
-                return true;
-            }
+            return this.entity == null || this.entity.isRepeatable() || !this.consumed;
         }
 
+        class EntityWrapper extends HttpEntityWrapper {
+
+            EntityWrapper(final HttpEntity entity) {
+                super(entity);
+            }
+
+            @Deprecated
+            @Override
+            public void consumeContent() throws IOException {
+                consumed = true;
+                super.consumeContent();
+            }
+
+            @Override
+            public InputStream getContent() throws IOException {
+                return super.getContent();
+            }
+
+            @Override
+            public void writeTo(final OutputStream outstream) throws IOException {
+                consumed = true;
+                super.writeTo(outstream);
+            }
+        }
+        
     }
 
     public static HttpRequestWrapper wrap(final HttpRequest request) throws ProtocolException {

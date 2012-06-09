@@ -221,6 +221,8 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
         HttpHost target = route.getTargetHost();
         HttpHost proxy = route.getProxyHost();
 
+        HttpRequest original = request.getOriginal();
+        
         // Save original request headers
         Header[] origheaders = request.getAllHeaders();
 
@@ -257,7 +259,7 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                 if (managedConn == null) {
                     ClientConnectionRequest connRequest = connManager.requestConnection(
                             route, userToken);
-                    if (request instanceof AbortableHttpRequest) {
+                    if (original instanceof AbortableHttpRequest) {
                         ((AbortableHttpRequest) request).setConnectionRequest(connRequest);
                     }
 
@@ -282,11 +284,12 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                     }
                 }
 
-                if (request instanceof AbortableHttpRequest) {
+                if (original instanceof AbortableHttpRequest) {
                     ((AbortableHttpRequest) request).setReleaseTrigger(managedConn);
                 }
 
                 if (!managedConn.isOpen()) {
+                    this.log.debug("Opening connection " + route);
                     managedConn.open(route, context, params);
                 } else {
                     managedConn.setSocketTimeout(HttpConnectionParams.getSoTimeout(params));
@@ -310,6 +313,10 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                             new BasicScheme(), new UsernamePasswordCredentials(userinfo));
                 }
 
+                if (this.log.isDebugEnabled()) {
+                    this.log.debug("Executing request " + request.getRequestLine());
+                }
+                
                 // Run request protocol interceptors
                 requestExec.preProcess(request, httpProcessor, context);
 

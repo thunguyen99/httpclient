@@ -29,8 +29,6 @@ package org.apache.http.impl.client.exec;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.logging.Log;
@@ -42,7 +40,6 @@ import org.apache.http.HttpException;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpRequest;
 import org.apache.http.HttpResponse;
-import org.apache.http.ProtocolException;
 import org.apache.http.ProtocolVersion;
 import org.apache.http.annotation.ThreadSafe;
 import org.apache.http.auth.AuthProtocolState;
@@ -54,7 +51,6 @@ import org.apache.http.client.UserTokenHandler;
 import org.apache.http.client.methods.AbortableHttpRequest;
 import org.apache.http.client.params.HttpClientParams;
 import org.apache.http.client.protocol.ClientContext;
-import org.apache.http.client.utils.URIUtils;
 import org.apache.http.conn.BasicManagedEntity;
 import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.conn.ClientConnectionRequest;
@@ -99,17 +95,8 @@ import org.apache.http.util.EntityUtils;
  *  <li>{@link org.apache.http.params.CoreConnectionPNames#TCP_NODELAY}</li>
  *  <li>{@link org.apache.http.params.CoreConnectionPNames#CONNECTION_TIMEOUT}</li>
  *  <li>{@link org.apache.http.params.CoreConnectionPNames#STALE_CONNECTION_CHECK}</li>
- *  <li>{@link org.apache.http.conn.params.ConnRoutePNames#FORCED_ROUTE}</li>
- *  <li>{@link org.apache.http.conn.params.ConnRoutePNames#LOCAL_ADDRESS}</li>
- *  <li>{@link org.apache.http.conn.params.ConnRoutePNames#DEFAULT_PROXY}</li>
- *  <li>{@link org.apache.http.cookie.params.CookieSpecPNames#DATE_PATTERNS}</li>
- *  <li>{@link org.apache.http.cookie.params.CookieSpecPNames#SINGLE_COOKIE_HEADER}</li>
  *  <li>{@link org.apache.http.auth.params.AuthPNames#CREDENTIAL_CHARSET}</li>
- *  <li>{@link org.apache.http.client.params.ClientPNames#COOKIE_POLICY}</li>
  *  <li>{@link org.apache.http.client.params.ClientPNames#HANDLE_AUTHENTICATION}</li>
- *  <li>{@link org.apache.http.client.params.ClientPNames#VIRTUAL_HOST}</li>
- *  <li>{@link org.apache.http.client.params.ClientPNames#DEFAULT_HOST}</li>
- *  <li>{@link org.apache.http.client.params.ClientPNames#DEFAULT_HEADERS}</li>
  *  <li>{@link org.apache.http.client.params.ClientPNames#CONN_MANAGER_TIMEOUT}</li>
  * </ul>
  *
@@ -176,34 +163,6 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
         this.params             = params;
     }
 
-    private void rewriteRequestURI(
-            final HttpRequestWrapper request,
-            final HttpRoute route) throws ProtocolException {
-        try {
-            URI uri = request.getURI();
-            if (route.getProxyHost() != null && !route.isTunnelled()) {
-                // Make sure the request URI is absolute
-                if (!uri.isAbsolute()) {
-                    HttpHost target = route.getTargetHost();
-                    uri = URIUtils.rewriteURI(uri, target, true);
-                } else {
-                    uri = URIUtils.rewriteURI(uri);
-                }
-            } else {
-                // Make sure the request URI is relative
-                if (uri.isAbsolute()) {
-                    uri = URIUtils.rewriteURI(uri, null);
-                } else {
-                    uri = URIUtils.rewriteURI(uri);
-                }
-            }
-            request.setURI(uri);
-        } catch (URISyntaxException ex) {
-            throw new ProtocolException("Invalid URI: " +
-                    request.getRequestLine().getUri(), ex);
-        }
-    }
-
     public HttpResponse execute(
             final HttpRoute route,
             final HttpRequestWrapper request,
@@ -218,28 +177,8 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
             proxyAuthState = new AuthState();
         }
 
-        HttpHost target = route.getTargetHost();
-        HttpHost proxy = route.getProxyHost();
-
         HttpRequest original = request.getOriginal();
-        
-        // Save original request headers
         Header[] origheaders = request.getAllHeaders();
-
-        // Re-write request URI if needed
-        rewriteRequestURI(request, route);
-
-        HttpHost virtualHost = request.getVirtualHost();
-        // HTTPCLIENT-1092 - add the port if necessary
-        if (virtualHost != null && virtualHost.getPort() == -1) {
-            int port = target.getPort();
-            if (port != -1){
-                virtualHost = new HttpHost(virtualHost.getHostName(), port, virtualHost.getSchemeName());
-            }
-        }
-
-        context.setAttribute(ExecutionContext.HTTP_TARGET_HOST, virtualHost != null ? virtualHost : target);
-        context.setAttribute(ExecutionContext.HTTP_PROXY_HOST, proxy);
 
         Object userToken = context.getAttribute(ClientContext.USER_TOKEN);
 

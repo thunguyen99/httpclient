@@ -51,7 +51,6 @@ import org.apache.http.client.UserTokenHandler;
 import org.apache.http.client.methods.HttpExecutionAware;
 import org.apache.http.client.params.HttpClientParams;
 import org.apache.http.client.protocol.ClientContext;
-import org.apache.http.conn.BasicManagedEntity;
 import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.conn.ClientConnectionRequest;
 import org.apache.http.conn.ConnectionKeepAliveStrategy;
@@ -360,7 +359,7 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                 managedConn = null;
             } else {
                 // install an auto-release entity
-                entity = new BasicManagedEntity(entity, managedConn, reuse);
+                entity = new ManagedEntity(entity, managedConn, reuse);
                 response.setEntity(entity);
             }
 

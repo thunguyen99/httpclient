@@ -31,6 +31,7 @@ import java.io.IOException;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.http.Header;
 import org.apache.http.HttpException;
 import org.apache.http.HttpRequest;
 import org.apache.http.HttpResponse;
@@ -80,6 +81,7 @@ public class RetryFacade implements HttpClientRequestExecutor {
         if (context == null) {
             throw new IllegalArgumentException("HTTP context may not be null");
         }
+        Header[] origheaders = request.getAllHeaders();
         for (int execCount = 0;; execCount++) {
             try {
                 this.requestExecutor.execute(route, request, context, execAware);
@@ -103,6 +105,7 @@ public class RetryFacade implements HttpClientRequestExecutor {
                         throw new NonRepeatableRequestException("Cannot retry request " +
                                 "with a non-repeatable request entity", ex);
                     }
+                    request.setHeaders(origheaders);
                     this.log.info("Retrying request");
                 } else {
                     throw ex;

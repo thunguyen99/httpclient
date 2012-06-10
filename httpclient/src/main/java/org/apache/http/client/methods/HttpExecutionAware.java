@@ -27,57 +27,32 @@
 
 package org.apache.http.client.methods;
 
-import java.io.IOException;
-
-import org.apache.http.client.HttpClient;
-import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.conn.ClientConnectionRequest;
 import org.apache.http.conn.ConnectionReleaseTrigger;
 import org.apache.http.conn.ManagedClientConnection;
 
 /**
- * Interface representing an HTTP request that can be aborted by shutting
- * down the underlying HTTP connection.
+ * Interface to be implemented by any object that wishes to be notified of request execution 
+ * events.
  *
- * @since 4.0
- * 
- * @deprecated (4.3) use {@link HttpExecutionAware}
+ * @since 4.3
  */
-@Deprecated
-public interface AbortableHttpRequest {
+public interface HttpExecutionAware {
 
+    boolean isAborted();
+    
     /**
      * Sets the {@link ClientConnectionRequest} callback that can be
      * used to abort a long-lived request for a connection.
-     * If the request is already aborted, throws an {@link IOException}.
-     *
-     * @see ClientConnectionManager
      */
-    void setConnectionRequest(ClientConnectionRequest connRequest) throws IOException;
+    void setConnectionRequest(ClientConnectionRequest connRequest);
 
     /**
      * Sets the {@link ConnectionReleaseTrigger} callback that can
      * be used to abort an active connection.
      * Typically, this will be the {@link ManagedClientConnection} itself.
-     * If the request is already aborted, throws an {@link IOException}.
      */
-    void setReleaseTrigger(ConnectionReleaseTrigger releaseTrigger) throws IOException;
-
-    /**
-     * Aborts this http request. Any active execution of this method should
-     * return immediately. If the request has not started, it will abort after
-     * the next execution. Aborting this request will cause all subsequent
-     * executions with this request to fail.
-     *
-     * @see HttpClient#execute(HttpUriRequest)
-     * @see HttpClient#execute(org.apache.http.HttpHost,
-     *      org.apache.http.HttpRequest)
-     * @see HttpClient#execute(HttpUriRequest,
-     *      org.apache.http.protocol.HttpContext)
-     * @see HttpClient#execute(org.apache.http.HttpHost,
-     *      org.apache.http.HttpRequest, org.apache.http.protocol.HttpContext)
-     */
-    void abort();
+    void setReleaseTrigger(ConnectionReleaseTrigger releaseTrigger);
 
 }
 

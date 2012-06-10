@@ -35,6 +35,7 @@ import org.apache.http.HttpResponse;
 import org.apache.http.annotation.ThreadSafe;
 import org.apache.http.client.BackoffManager;
 import org.apache.http.client.ConnectionBackoffStrategy;
+import org.apache.http.client.methods.HttpExecutionAware;
 import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.protocol.HttpContext;
 
@@ -70,13 +71,20 @@ public class BackoffStrategyFacade implements HttpClientRequestExecutor {
     public HttpResponse execute(
             final HttpRoute route,
             final HttpRequestWrapper request,
-            final HttpContext context) throws IOException, HttpException {
+            final HttpContext context,
+            final HttpExecutionAware execAware) throws IOException, HttpException {
+        if (route == null) {
+            throw new IllegalArgumentException("HTTP route may not be null");
+        }
         if (request == null) {
-            throw new IllegalArgumentException("Request may not be null");
+            throw new IllegalArgumentException("HTTP request may not be null");
+        }
+        if (context == null) {
+            throw new IllegalArgumentException("HTTP context may not be null");
         }
         HttpResponse out;
         try {
-            out = this.requestExecutor.execute(route, request, context);
+            out = this.requestExecutor.execute(route, request, context, execAware);
         } catch (RuntimeException ex) {
             if (this.connectionBackoffStrategy.shouldBackoff(ex)) {
                 this.backoffManager.backOff(route);

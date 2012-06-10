@@ -38,6 +38,7 @@ import org.apache.http.HttpHost;
 import org.apache.http.HttpResponse;
 import org.apache.http.ProtocolException;
 import org.apache.http.annotation.ThreadSafe;
+import org.apache.http.client.methods.HttpExecutionAware;
 import org.apache.http.client.utils.URIUtils;
 import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.protocol.ExecutionContext;
@@ -99,7 +100,17 @@ public class ProtocolFacade implements HttpClientRequestExecutor {
     public HttpResponse execute(
             final HttpRoute route,
             final HttpRequestWrapper request,
-            final HttpContext context) throws HttpException, IOException {
+            final HttpContext context,
+            final HttpExecutionAware execAware) throws IOException, HttpException {
+        if (route == null) {
+            throw new IllegalArgumentException("HTTP route may not be null");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("HTTP request may not be null");
+        }
+        if (context == null) {
+            throw new IllegalArgumentException("HTTP context may not be null");
+        }
         HttpHost target = route.getTargetHost();
         HttpHost proxy = route.getProxyHost();
 
@@ -125,7 +136,7 @@ public class ProtocolFacade implements HttpClientRequestExecutor {
 
         this.httpProcessor.process(request, context);
         
-        HttpResponse response = this.requestExecutor.execute(route, request, context);
+        HttpResponse response = this.requestExecutor.execute(route, request, context, execAware);
         
         // Run response protocol interceptors
         context.setAttribute(ExecutionContext.HTTP_RESPONSE, response);

@@ -25,25 +25,31 @@
  *
  */
 
-package org.apache.http.impl.client.exec;
+package org.apache.http.impl.client;
 
-import java.io.IOException;
+import java.io.InterruptedIOException;
 
-import org.apache.http.HttpException;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.methods.HttpExecutionAware;
-import org.apache.http.conn.routing.HttpRoute;
-import org.apache.http.protocol.HttpContext;
+import org.apache.http.annotation.Immutable;
 
 /**
+ * Signals that the request has been aborted.
+ *
  * @since 4.3
  */
-public interface HttpClientRequestExecutor {
+@Immutable
+public class RequestAbortedException extends InterruptedIOException {
 
-    HttpResponse execute(
-            HttpRoute route, 
-            HttpRequestWrapper request, 
-            HttpContext context,
-            HttpExecutionAware execAware) throws IOException, HttpException;
+    private static final long serialVersionUID = 4973849966012490112L;
+
+    public RequestAbortedException(final String message) {
+        super(message);
+    }
+
+    public RequestAbortedException(final String message, final Throwable cause) {
+        super(message);
+        if (cause != null) {
+            initCause(cause);
+        }
+    }
 
 }

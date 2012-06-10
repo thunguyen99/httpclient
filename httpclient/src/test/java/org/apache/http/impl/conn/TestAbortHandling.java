@@ -38,7 +38,6 @@ import org.apache.http.HttpRequest;
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
 import org.apache.http.ProtocolVersion;
-import org.apache.http.client.methods.AbortableHttpRequest;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.conn.ClientConnectionRequest;
@@ -52,7 +51,6 @@ import org.apache.http.conn.scheme.SchemeRegistry;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.impl.client.DefaultRequestDirector;
-import org.apache.http.impl.client.RequestWrapper;
 import org.apache.http.localserver.BasicServerTestBase;
 import org.apache.http.localserver.LocalTestServer;
 import org.apache.http.message.BasicHeader;
@@ -125,7 +123,6 @@ public class TestAbortHandling extends BasicServerTestBase {
 
         HttpRequest reqWrapper = (HttpRequest) context.getAttribute(ExecutionContext.HTTP_REQUEST);
         Assert.assertNotNull("Request should exist",reqWrapper);
-        Assert.assertEquals(1,((RequestWrapper) reqWrapper).getExecCount());
     }
 
     /**
@@ -494,7 +491,7 @@ public class TestAbortHandling extends BasicServerTestBase {
         }
 
         @Override
-        public void setReleaseTrigger(ConnectionReleaseTrigger releaseTrigger) throws IOException {
+        public void setReleaseTrigger(ConnectionReleaseTrigger releaseTrigger) {
             try {
                 if(!releaseTriggerLatch.await(1, TimeUnit.SECONDS))
                     throw new RuntimeException("Waited too long...");

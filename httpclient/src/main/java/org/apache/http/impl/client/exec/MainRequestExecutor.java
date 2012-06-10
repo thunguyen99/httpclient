@@ -48,7 +48,7 @@ import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.AuthenticationStrategy;
 import org.apache.http.client.NonRepeatableRequestException;
 import org.apache.http.client.UserTokenHandler;
-import org.apache.http.client.methods.AbortableHttpRequest;
+import org.apache.http.client.methods.HttpExecutionAware;
 import org.apache.http.client.params.HttpClientParams;
 import org.apache.http.client.protocol.ClientContext;
 import org.apache.http.conn.BasicManagedEntity;
@@ -63,6 +63,7 @@ import org.apache.http.conn.scheme.Scheme;
 import org.apache.http.entity.BufferedHttpEntity;
 import org.apache.http.impl.auth.BasicScheme;
 import org.apache.http.impl.client.HttpAuthenticator;
+import org.apache.http.impl.client.RequestAbortedException;
 import org.apache.http.impl.client.TunnelRefusedException;
 import org.apache.http.impl.conn.ConnectionShutdownException;
 import org.apache.http.message.BasicHttpRequest;
@@ -166,7 +167,17 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
     public HttpResponse execute(
             final HttpRoute route,
             final HttpRequestWrapper request,
-            final HttpContext context) throws HttpException, IOException {
+            final HttpContext context,
+            final HttpExecutionAware execAware) throws IOException, HttpException {
+        if (route == null) {
+            throw new IllegalArgumentException("HTTP route may not be null");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("HTTP request may not be null");
+        }
+        if (context == null) {
+            throw new IllegalArgumentException("HTTP context may not be null");
+        }
 
         AuthState targetAuthState = (AuthState) context.getAttribute(ClientContext.TARGET_AUTH_STATE);
         if (targetAuthState == null) {
@@ -177,7 +188,6 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
             proxyAuthState = new AuthState();
         }
 
-        HttpRequest original = request.getOriginal();
         Header[] origheaders = request.getAllHeaders();
 
         Object userToken = context.getAttribute(ClientContext.USER_TOKEN);
@@ -198,17 +208,20 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                 if (managedConn == null) {
                     ClientConnectionRequest connRequest = connManager.requestConnection(
                             route, userToken);
-                    if (original instanceof AbortableHttpRequest) {
-                        ((AbortableHttpRequest) request).setConnectionRequest(connRequest);
+                    if (execAware != null) {
+                        if (execAware.isAborted()) {
+                            connRequest.abortRequest();
+                            throw new RequestAbortedException("Request aborted");
+                        } else {
+                            execAware.setConnectionRequest(connRequest);
+                        }
                     }
 
                     long timeout = HttpClientParams.getConnectionManagerTimeout(params);
                     try {
                         managedConn = connRequest.getConnection(timeout, TimeUnit.MILLISECONDS);
                     } catch(InterruptedException interrupted) {
-                        InterruptedIOException iox = new InterruptedIOException();
-                        iox.initCause(interrupted);
-                        throw iox;
+                        throw new RequestAbortedException("Request aborted", interrupted);
                     }
 
                     if (HttpConnectionParams.isStaleCheckingEnabled(params)) {
@@ -223,8 +236,13 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                     }
                 }
 
-                if (original instanceof AbortableHttpRequest) {
-                    ((AbortableHttpRequest) request).setReleaseTrigger(managedConn);
+                if (execAware != null) {
+                    if (execAware.isAborted()) {
+                        managedConn.releaseConnection();
+                        throw new RequestAbortedException("Request aborted");
+                    } else {
+                        execAware.setReleaseTrigger(managedConn);
+                    }
                 }
 
                 if (!managedConn.isOpen()) {
@@ -246,6 +264,10 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                     break;
                 }
 
+                if (execAware != null && execAware.isAborted()) {
+                    throw new RequestAbortedException("Request aborted");
+                }
+                
                 String userinfo = request.getURI().getUserInfo();
                 if (userinfo != null) {
                     targetAuthState.update(

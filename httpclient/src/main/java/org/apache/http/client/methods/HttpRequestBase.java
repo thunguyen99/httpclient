@@ -51,9 +51,10 @@ import org.apache.http.params.HttpProtocolParams;
  *
  * @since 4.0
  */
+@SuppressWarnings("deprecation")
 @NotThreadSafe
 public abstract class HttpRequestBase extends AbstractHttpMessage
-    implements HttpUriRequest, AbortableHttpRequest, Cloneable {
+    implements HttpUriRequest, HttpExecutionAware, AbortableHttpRequest, Cloneable {
 
     private Lock abortLock;
     private volatile boolean aborted;
@@ -101,10 +102,9 @@ public abstract class HttpRequestBase extends AbstractHttpMessage
         this.uri = uri;
     }
 
-    public void setConnectionRequest(final ClientConnectionRequest connRequest)
-            throws IOException {
+    public void setConnectionRequest(final ClientConnectionRequest connRequest) {
         if (this.aborted) {
-            throw new IOException("Request already aborted");
+            return;
         }
         this.abortLock.lock();
         try {
@@ -114,10 +114,9 @@ public abstract class HttpRequestBase extends AbstractHttpMessage
         }
     }
 
-    public void setReleaseTrigger(final ConnectionReleaseTrigger releaseTrigger)
-            throws IOException {
+    public void setReleaseTrigger(final ConnectionReleaseTrigger releaseTrigger) {
         if (this.aborted) {
-            throw new IOException("Request already aborted");
+            return;
         }
         this.abortLock.lock();
         try {

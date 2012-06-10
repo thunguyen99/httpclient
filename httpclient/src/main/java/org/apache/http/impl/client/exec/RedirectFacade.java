@@ -42,6 +42,7 @@ import org.apache.http.auth.AuthScheme;
 import org.apache.http.auth.AuthState;
 import org.apache.http.client.RedirectException;
 import org.apache.http.client.RedirectStrategy;
+import org.apache.http.client.methods.HttpExecutionAware;
 import org.apache.http.client.params.ClientPNames;
 import org.apache.http.client.params.HttpClientParams;
 import org.apache.http.client.protocol.ClientContext;
@@ -92,14 +93,25 @@ public class RedirectFacade implements HttpClientRequestExecutor {
     public HttpResponse execute(
             final HttpRoute route,
             final HttpRequestWrapper request,
-            final HttpContext context) throws IOException, HttpException {
+            final HttpContext context,
+            final HttpExecutionAware execAware) throws IOException, HttpException {
+        if (route == null) {
+            throw new IllegalArgumentException("HTTP route may not be null");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("HTTP request may not be null");
+        }
+        if (context == null) {
+            throw new IllegalArgumentException("HTTP context may not be null");
+        }
         HttpParams params = request.getParams();
         int redirectCount = 0;
         int maxRedirects = params.getIntParameter(ClientPNames.MAX_REDIRECTS, 100);
         HttpRoute currentRoute = route;
         HttpRequestWrapper currentRequest = request;
         for (;;) {
-            HttpResponse response = requestExecutor.execute(currentRoute, currentRequest, context);
+            HttpResponse response = requestExecutor.execute(
+                    currentRoute, currentRequest, context, execAware);
             if (HttpClientParams.isRedirecting(params) &&
                     this.redirectStrategy.isRedirected(currentRequest, response, context)) {
 

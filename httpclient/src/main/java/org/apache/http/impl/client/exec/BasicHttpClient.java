@@ -43,6 +43,7 @@ import org.apache.http.auth.AuthState;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.ResponseHandler;
+import org.apache.http.client.methods.HttpExecutionAware;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.client.params.ClientPNames;
 import org.apache.http.client.protocol.ClientContext;
@@ -50,6 +51,7 @@ import org.apache.http.client.utils.URIUtils;
 import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.conn.routing.HttpRoutePlanner;
 import org.apache.http.impl.client.ClientParamsStack;
+import org.apache.http.impl.client.RequestAbortedException;
 import org.apache.http.params.HttpParams;
 import org.apache.http.protocol.BasicHttpContext;
 import org.apache.http.protocol.HttpContext;
@@ -150,9 +152,15 @@ public abstract class BasicHttpClient implements HttpClient {
             HttpRequestWrapper wrapper = HttpRequestWrapper.wrap(request);
             wrapper.setParams(params);
             wrapper.setVirtualHost(virtualHost);
-
+            HttpExecutionAware execListner = null;
+            if (request instanceof HttpExecutionAware) {
+                execListner = (HttpExecutionAware) request;
+                if (execListner.isAborted()) {
+                    throw new RequestAbortedException("Request aborted");
+                }
+            }
             HttpRoute route = determineRoute(target, request, context);
-            return this.requestExecutor.execute(route, wrapper, execContext);
+            return this.requestExecutor.execute(route, wrapper, execContext, execListner);
         } catch (HttpException httpException) {
             throw new ClientProtocolException(httpException);
         }

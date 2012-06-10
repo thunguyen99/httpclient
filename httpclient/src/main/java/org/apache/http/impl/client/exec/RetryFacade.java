@@ -37,6 +37,7 @@ import org.apache.http.HttpResponse;
 import org.apache.http.annotation.NotThreadSafe;
 import org.apache.http.client.HttpRequestRetryHandler;
 import org.apache.http.client.NonRepeatableRequestException;
+import org.apache.http.client.methods.HttpExecutionAware;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.protocol.HttpContext;
@@ -66,12 +67,22 @@ public class RetryFacade implements HttpClientRequestExecutor {
     }
 
     public HttpResponse execute(
-            final HttpRoute route, 
-            final HttpRequestWrapper request, 
-            final HttpContext context) throws IOException, HttpException {
+            final HttpRoute route,
+            final HttpRequestWrapper request,
+            final HttpContext context,
+            final HttpExecutionAware execAware) throws IOException, HttpException {
+        if (route == null) {
+            throw new IllegalArgumentException("HTTP route may not be null");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("HTTP request may not be null");
+        }
+        if (context == null) {
+            throw new IllegalArgumentException("HTTP context may not be null");
+        }
         for (int execCount = 0;; execCount++) {
             try {
-                this.requestExecutor.execute(route, request, context);
+                this.requestExecutor.execute(route, request, context, execAware);
             } catch (IOException ex) {
                 HttpRequest original = request.getOriginal();
                 if (original instanceof HttpUriRequest && ((HttpUriRequest) original).isAborted()) {

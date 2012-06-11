@@ -33,6 +33,7 @@ import java.io.OutputStream;
 import java.net.SocketException;
 
 import org.apache.http.annotation.NotThreadSafe;
+import org.apache.http.client.methods.HttpExecutionAware;
 import org.apache.http.conn.EofSensorInputStream;
 import org.apache.http.conn.EofSensorWatcher;
 import org.apache.http.conn.ManagedClientConnection;
@@ -50,15 +51,15 @@ import org.apache.http.util.EntityUtils;
 class ManagedEntity extends HttpEntityWrapper implements EofSensorWatcher {
 
     private ManagedClientConnection managedConn;
-    private final boolean attemptReuse;
+    private HttpExecutionAware execAware;
 
     public ManagedEntity(
             final HttpEntity entity,
             final ManagedClientConnection managedConn,
-            boolean reuse) {
+            final HttpExecutionAware execAware) {
         super(entity);
         this.managedConn = managedConn;
-        this.attemptReuse = reuse;
+        this.execAware = execAware;
     }
 
     @Override
@@ -76,7 +77,7 @@ class ManagedEntity extends HttpEntityWrapper implements EofSensorWatcher {
             return;
         }
         try {
-            if (this.attemptReuse) {
+            if (this.managedConn.isMarkedReusable()) {
                 // this will not trigger a callback from EofSensorInputStream
                 EntityUtils.consume(this.wrappedEntity);
                 releaseConnection();
@@ -94,19 +95,16 @@ class ManagedEntity extends HttpEntityWrapper implements EofSensorWatcher {
 
     @Override
     public void writeTo(final OutputStream outstream) throws IOException {
-        super.writeTo(outstream);
+        this.wrappedEntity.writeTo(outstream);
         ensureConsumed();
     }
 
     public boolean eofDetected(final InputStream wrapped) throws IOException {
         try {
-            if (this.attemptReuse && (this.managedConn != null)) {
-                // there may be some cleanup required, such as
-                // reading trailers after the response body:
-                wrapped.close();
-                this.managedConn.markReusable();
-                releaseConnection();
-            }
+            // there may be some cleanup required, such as
+            // reading trailers after the response body:
+            wrapped.close();
+            releaseConnection();
         } finally {
             cleanup();
         }
@@ -115,18 +113,15 @@ class ManagedEntity extends HttpEntityWrapper implements EofSensorWatcher {
 
     public boolean streamClosed(InputStream wrapped) throws IOException {
         try {
-            if (this.attemptReuse && (this.managedConn != null)) {
-                boolean valid = this.managedConn.isOpen();
-                // this assumes that closing the stream will
-                // consume the remainder of the response body:
-                try {
-                    wrapped.close();
-                    this.managedConn.markReusable();
-                    releaseConnection();
-                } catch (SocketException ex) {
-                    if (valid) {
-                        throw ex;
-                    }
+            boolean aborted = this.execAware != null && this.execAware.isAborted();
+            // this assumes that closing the stream will
+            // consume the remainder of the response body:
+            try {
+                wrapped.close();
+                releaseConnection();
+            } catch (SocketException ex) {
+                if (!aborted) {
+                    throw ex;
                 }
             }
         } finally {
@@ -152,5 +147,6 @@ class ManagedEntity extends HttpEntityWrapper implements EofSensorWatcher {
             this.managedConn.abortConnection();
             this.managedConn = null;
         }
+        this.execAware = null;
     }
 }

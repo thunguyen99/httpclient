@@ -32,7 +32,7 @@ import org.apache.http.conn.ConnectionReleaseTrigger;
 import org.apache.http.conn.ManagedClientConnection;
 
 /**
- * Interface to be implemented by any object that wishes to be notified of request execution 
+ * Interface to be implemented by any object that wishes to be notified of request execution
  * events.
  *
  * @since 4.3
@@ -40,7 +40,7 @@ import org.apache.http.conn.ManagedClientConnection;
 public interface HttpExecutionAware {
 
     boolean isAborted();
-    
+
     /**
      * Sets the {@link ClientConnectionRequest} callback that can be
      * used to abort a long-lived request for a connection.

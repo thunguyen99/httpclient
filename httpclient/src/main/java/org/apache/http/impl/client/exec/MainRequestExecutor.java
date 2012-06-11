@@ -191,9 +191,37 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
 
         Object userToken = context.getAttribute(ClientContext.USER_TOKEN);
 
-        ManagedClientConnection managedConn = null;
+        ClientConnectionRequest connRequest = connManager.requestConnection(route, userToken);
+        if (execAware != null) {
+            if (execAware.isAborted()) {
+                connRequest.abortRequest();
+                throw new RequestAbortedException("Request aborted");
+            } else {
+                execAware.setConnectionRequest(connRequest);
+            }
+        }
 
-        boolean reuse = false;
+        ManagedClientConnection managedConn;
+        try {
+            long timeout = HttpClientParams.getConnectionManagerTimeout(params);
+            managedConn = connRequest.getConnection(timeout, TimeUnit.MILLISECONDS);
+        } catch(InterruptedException interrupted) {
+            throw new RequestAbortedException("Request aborted", interrupted);
+        }
+
+        context.setAttribute(ExecutionContext.HTTP_CONNECTION, managedConn);
+
+        if (HttpConnectionParams.isStaleCheckingEnabled(params)) {
+            // validate connection
+            if (managedConn.isOpen()) {
+                this.log.debug("Stale connection check");
+                if (managedConn.isStale()) {
+                    this.log.debug("Stale connection detected");
+                    managedConn.close();
+                }
+            }
+        }
+
         try {
             HttpResponse response = null;
             for (int execCount = 1;; execCount++) {
@@ -201,38 +229,6 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                 if (execCount > 1 && !request.isRepeatable()) {
                     throw new NonRepeatableRequestException("Cannot retry request " +
                             "with a non-repeatable request entity.");
-                }
-
-                // Allocate connection if needed
-                if (managedConn == null) {
-                    ClientConnectionRequest connRequest = connManager.requestConnection(
-                            route, userToken);
-                    if (execAware != null) {
-                        if (execAware.isAborted()) {
-                            connRequest.abortRequest();
-                            throw new RequestAbortedException("Request aborted");
-                        } else {
-                            execAware.setConnectionRequest(connRequest);
-                        }
-                    }
-
-                    long timeout = HttpClientParams.getConnectionManagerTimeout(params);
-                    try {
-                        managedConn = connRequest.getConnection(timeout, TimeUnit.MILLISECONDS);
-                    } catch(InterruptedException interrupted) {
-                        throw new RequestAbortedException("Request aborted", interrupted);
-                    }
-
-                    if (HttpConnectionParams.isStaleCheckingEnabled(params)) {
-                        // validate connection
-                        if (managedConn.isOpen()) {
-                            this.log.debug("Stale connection check");
-                            if (managedConn.isStale()) {
-                                this.log.debug("Stale connection detected");
-                                managedConn.close();
-                            }
-                        }
-                    }
                 }
 
                 if (execAware != null) {
@@ -251,8 +247,6 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                     managedConn.setSocketTimeout(HttpConnectionParams.getSoTimeout(params));
                 }
 
-                context.setAttribute(ExecutionContext.HTTP_CONNECTION, managedConn);
-
                 try {
                     establishRoute(proxyAuthState, managedConn, route, context);
                 } catch (TunnelRefusedException ex) {
@@ -266,7 +260,7 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                 if (execAware != null && execAware.isAborted()) {
                     throw new RequestAbortedException("Request aborted");
                 }
-                
+
                 String userinfo = request.getURI().getUserInfo();
                 if (userinfo != null) {
                     targetAuthState.update(
@@ -276,7 +270,7 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                 if (this.log.isDebugEnabled()) {
                     this.log.debug("Executing request " + request.getRequestLine());
                 }
-                
+
                 // Run request protocol interceptors
                 requestExec.preProcess(request, httpProcessor, context);
 
@@ -287,8 +281,7 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                 requestExec.postProcess(response, httpProcessor, context);
 
                 // The connection is in or can be brought to a re-usable state.
-                reuse = reuseStrategy.keepAlive(response, context);
-                if (reuse) {
+                if (reuseStrategy.keepAlive(response, context)) {
                     // Set the idle duration of this connection
                     long duration = keepAliveStrategy.getKeepAliveDuration(response, context);
                     if (this.log.isDebugEnabled()) {
@@ -301,17 +294,19 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                         this.log.debug("Connection can be kept alive " + s);
                     }
                     managedConn.setIdleDuration(duration, TimeUnit.MILLISECONDS);
+                    managedConn.markReusable();
+                } else {
+                    managedConn.unmarkReusable();
                 }
 
                 if (needAuthentication(
                         targetAuthState, proxyAuthState, route, request, response, context)) {
-                    if (reuse) {
+                    if (managedConn.isMarkedReusable()) {
                         // Make sure the response body is fully consumed, if present
                         HttpEntity entity = response.getEntity();
                         EntityUtils.consume(entity);
                         // entity consumed above is not an auto-release entity,
                         // need to mark the connection re-usable explicitly
-                        managedConn.markReusable();
                     } else {
                         managedConn.close();
                         if (proxyAuthState.getState() == AuthProtocolState.SUCCESS
@@ -334,32 +329,26 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                 }
             }
 
-            if (managedConn != null) {
-                if (userToken == null) {
-                    userToken = userTokenHandler.getUserToken(context);
-                    context.setAttribute(ClientContext.USER_TOKEN, userToken);
-                }
-                if (userToken != null) {
-                    managedConn.setState(userToken);
-                }
+            if (userToken == null) {
+                userToken = userTokenHandler.getUserToken(context);
+                context.setAttribute(ClientContext.USER_TOKEN, userToken);
+            }
+            if (userToken != null) {
+                managedConn.setState(userToken);
             }
 
             // check for entity, release connection if possible
             HttpEntity entity = response.getEntity();
             if (entity == null || !entity.isStreaming()) {
                 // connection not needed and (assumed to be) in re-usable state
-                if (reuse) {
-                    managedConn.markReusable();
-                }
                 try {
                     managedConn.releaseConnection();
                 } catch(IOException ex) {
                     this.log.debug("IOException releasing connection", ex);
                 }
-                managedConn = null;
             } else {
                 // install an auto-release entity
-                entity = new ManagedEntity(entity, managedConn, reuse);
+                entity = new ManagedEntity(entity, managedConn, execAware);
                 response.setEntity(entity);
             }
 
@@ -622,15 +611,13 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
      * {@link #execute execute} during exception handling.
      */
     private void abortConnection(final ManagedClientConnection managedConn) {
-        if (managedConn != null) {
-            // we got here as the result of an exception
-            // no response will be returned, release the connection
-            try {
-                managedConn.abortConnection();
-            } catch (IOException ex) {
-                if (this.log.isDebugEnabled()) {
-                    this.log.debug(ex.getMessage(), ex);
-                }
+        // we got here as the result of an exception
+        // no response will be returned, release the connection
+        try {
+            managedConn.abortConnection();
+        } catch (IOException ex) {
+            if (this.log.isDebugEnabled()) {
+                this.log.debug(ex.getMessage(), ex);
             }
         }
     }

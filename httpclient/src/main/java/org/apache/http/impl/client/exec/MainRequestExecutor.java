@@ -34,14 +34,15 @@ import java.util.concurrent.TimeUnit;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.http.ConnectionReuseStrategy;
-import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpException;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpRequest;
+import org.apache.http.HttpRequestInterceptor;
 import org.apache.http.HttpResponse;
 import org.apache.http.ProtocolVersion;
 import org.apache.http.annotation.ThreadSafe;
+import org.apache.http.auth.AUTH;
 import org.apache.http.auth.AuthProtocolState;
 import org.apache.http.auth.AuthState;
 import org.apache.http.auth.UsernamePasswordCredentials;
@@ -51,6 +52,7 @@ import org.apache.http.client.UserTokenHandler;
 import org.apache.http.client.methods.HttpExecutionAware;
 import org.apache.http.client.params.HttpClientParams;
 import org.apache.http.client.protocol.ClientContext;
+import org.apache.http.client.protocol.RequestClientConnControl;
 import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.conn.ClientConnectionRequest;
 import org.apache.http.conn.ConnectionKeepAliveStrategy;
@@ -73,6 +75,8 @@ import org.apache.http.protocol.ExecutionContext;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.protocol.HttpProcessor;
 import org.apache.http.protocol.HttpRequestExecutor;
+import org.apache.http.protocol.ImmutableHttpProcessor;
+import org.apache.http.protocol.RequestUserAgent;
 import org.apache.http.util.EntityUtils;
 
 /**
@@ -111,7 +115,7 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
     private final ConnectionReuseStrategy reuseStrategy;
     private final ConnectionKeepAliveStrategy keepAliveStrategy;
     private final HttpRequestExecutor requestExec;
-    private final HttpProcessor httpProcessor;
+    private final HttpProcessor proxyHttpProcessor;
     private final AuthenticationStrategy targetAuthStrategy;
     private final AuthenticationStrategy proxyAuthStrategy;
     private final HttpAuthenticator authenticator;
@@ -119,7 +123,6 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
     private final HttpParams params;
 
     public MainRequestExecutor(
-            final HttpProcessor httpProcessor,
             final ClientConnectionManager connManager,
             final ConnectionReuseStrategy reuseStrategy,
             final ConnectionKeepAliveStrategy keepAliveStrategy,
@@ -127,9 +130,6 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
             final AuthenticationStrategy proxyAuthStrategy,
             final UserTokenHandler userTokenHandler,
             final HttpParams params) {
-        if (httpProcessor == null) {
-            throw new IllegalArgumentException("HTTP protocol processor may not be null");
-        }
         if (connManager == null) {
             throw new IllegalArgumentException("Client connection manager may not be null");
         }
@@ -153,7 +153,10 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
         }
         this.authenticator      = new HttpAuthenticator();
         this.requestExec        = new HttpRequestExecutor();
-        this.httpProcessor      = httpProcessor;
+        this.proxyHttpProcessor = new ImmutableHttpProcessor(new HttpRequestInterceptor[] {
+                new RequestClientConnControl(),
+                new RequestUserAgent()
+        } );
         this.connManager        = connManager;
         this.reuseStrategy      = reuseStrategy;
         this.keepAliveStrategy  = keepAliveStrategy;
@@ -187,7 +190,11 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
             proxyAuthState = new AuthState();
         }
 
-        Header[] origheaders = request.getAllHeaders();
+        String userinfo = request.getURI().getUserInfo();
+        if (userinfo != null) {
+            targetAuthState.update(
+                    new BasicScheme(), new UsernamePasswordCredentials(userinfo));
+        }
 
         Object userToken = context.getAttribute(ClientContext.USER_TOKEN);
 
@@ -261,24 +268,25 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                     throw new RequestAbortedException("Request aborted");
                 }
 
-                String userinfo = request.getURI().getUserInfo();
-                if (userinfo != null) {
-                    targetAuthState.update(
-                            new BasicScheme(), new UsernamePasswordCredentials(userinfo));
-                }
-
                 if (this.log.isDebugEnabled()) {
                     this.log.debug("Executing request " + request.getRequestLine());
                 }
 
-                // Run request protocol interceptors
-                requestExec.preProcess(request, httpProcessor, context);
+                if (!request.containsHeader(AUTH.WWW_AUTH_RESP)) {
+                    if (this.log.isDebugEnabled()) {
+                        this.log.debug("Target auth state: " + targetAuthState.getState());
+                    }
+                    this.authenticator.generateAuthResponse(request, targetAuthState, context);
+                }
+                if (!request.containsHeader(AUTH.PROXY_AUTH_RESP) && !route.isTunnelled()) {
+                    if (this.log.isDebugEnabled()) {
+                        this.log.debug("Proxy auth state: " + proxyAuthState.getState());
+                    }
+                    this.authenticator.generateAuthResponse(request, proxyAuthState, context);
+                }
 
                 response = requestExec.execute(request, managedConn, context);
                 response.setParams(params);
-
-                // Run response protocol interceptors
-                requestExec.postProcess(response, httpProcessor, context);
 
                 // The connection is in or can be brought to a re-usable state.
                 if (reuseStrategy.keepAlive(response, context)) {
@@ -322,8 +330,9 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                             targetAuthState.reset();
                         }
                     }
-                    // discard all headers and retry request
-                    request.setHeaders(origheaders);
+                    // discard previous auth headers
+                    request.removeHeaders(AUTH.WWW_AUTH_RESP);
+                    request.removeHeaders(AUTH.PROXY_AUTH_RESP);
                 } else {
                     break;
                 }
@@ -447,23 +456,21 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
         HttpHost proxy = route.getProxyHost();
         HttpResponse response = null;
 
+        HttpRequest connect = createConnectRequest(route, context);
+        connect.setParams(this.params);
+
+        this.requestExec.preProcess(connect, this.proxyHttpProcessor, context);
+
         for (;;) {
             if (!managedConn.isOpen()) {
                 managedConn.open(route, context, this.params);
             }
 
-            HttpRequest connect = createConnectRequest(route, context);
-            connect.setParams(this.params);
-
-            // Populate the execution context
-            context.setAttribute(ExecutionContext.HTTP_REQUEST, connect);
-
-            this.requestExec.preProcess(connect, this.httpProcessor, context);
+            connect.removeHeaders(AUTH.PROXY_AUTH_RESP);
+            this.authenticator.generateAuthResponse(connect, proxyAuthState, context);
 
             response = this.requestExec.execute(connect, managedConn, context);
-
             response.setParams(this.params);
-            this.requestExec.postProcess(response, this.httpProcessor, context);
 
             int status = response.getStatusLine().getStatusCode();
             if (status < 200) {
@@ -474,7 +481,7 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
             if (HttpClientParams.isAuthenticating(this.params)) {
                 if (this.authenticator.isAuthenticationRequested(proxy, response,
                         this.proxyAuthStrategy, proxyAuthState, context)) {
-                    if (this.authenticator.authenticate(proxy, response,
+                    if (this.authenticator.handleAuthChallenge(proxy, response,
                             this.proxyAuthStrategy, proxyAuthState, context)) {
                         // Retry request
                         if (this.reuseStrategy.keepAlive(response, context)) {
@@ -592,13 +599,13 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
             }
             if (this.authenticator.isAuthenticationRequested(target, response,
                     this.targetAuthStrategy, targetAuthState, context)) {
-                return this.authenticator.authenticate(target, response,
+                return this.authenticator.handleAuthChallenge(target, response,
                         this.targetAuthStrategy, targetAuthState, context);
             }
             HttpHost proxy = route.getProxyHost();
             if (this.authenticator.isAuthenticationRequested(proxy, response,
                     this.proxyAuthStrategy, proxyAuthState, context)) {
-                return this.authenticator.authenticate(proxy, response,
+                return this.authenticator.handleAuthChallenge(proxy, response,
                         this.proxyAuthStrategy, proxyAuthState, context);
             }
         }

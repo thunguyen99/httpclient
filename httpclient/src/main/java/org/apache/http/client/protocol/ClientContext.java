@@ -36,10 +36,19 @@ package org.apache.http.client.protocol;
 public interface ClientContext {
 
     /**
+     * Attribute name of a {@link org.apache.http.conn.routing.RouteInfo}
+     * object that represents the actual connection route.
+     *
+     * @since 4.3
+     */
+    public static final String ROUTE   = "http.route";
+
+    /**
      * Attribute name of a {@link org.apache.http.conn.scheme.Scheme}
      * object that represents the actual protocol scheme registry.
      */
     public static final String SCHEME_REGISTRY   = "http.scheme-registry";
+
     /**
      * Attribute name of a {@link org.apache.http.cookie.CookieSpecRegistry}
      * object that represents the actual cookie specification registry.

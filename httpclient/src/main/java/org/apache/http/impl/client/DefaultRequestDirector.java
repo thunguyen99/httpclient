@@ -505,11 +505,9 @@ public class DefaultRequestDirector implements RequestDirector {
                     target = route.getTargetHost();
                 }
 
-                HttpHost proxy = route.getProxyHost();
-
                 // Populate the execution context
                 context.setAttribute(ExecutionContext.HTTP_TARGET_HOST, target);
-                context.setAttribute(ExecutionContext.HTTP_PROXY_HOST, proxy);
+                context.setAttribute(ClientContext.ROUTE, route);
                 context.setAttribute(ExecutionContext.HTTP_CONNECTION, managedConn);
 
                 // Run request protocol interceptors

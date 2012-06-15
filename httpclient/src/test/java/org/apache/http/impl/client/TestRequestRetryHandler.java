@@ -32,7 +32,7 @@ import java.net.UnknownHostException;
 
 import org.apache.http.client.HttpRequestRetryHandler;
 import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.conn.ConnectTimeoutException;
 import org.apache.http.conn.scheme.Scheme;
@@ -63,7 +63,7 @@ public class TestRequestRetryHandler {
         TestHttpRequestRetryHandler testRetryHandler = new TestHttpRequestRetryHandler();
         client.setHttpRequestRetryHandler(testRetryHandler);
 
-        HttpRequestBase request = new HttpGet("http://www.example.com/");
+        HttpUriRequest request = new HttpGet("http://www.example.com/");
 
         HttpConnectionParams.setConnectionTimeout(request.getParams(), 1);
         try {

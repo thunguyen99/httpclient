@@ -45,7 +45,6 @@ import org.apache.http.annotation.ThreadSafe;
 import org.apache.http.auth.AUTH;
 import org.apache.http.auth.AuthProtocolState;
 import org.apache.http.auth.AuthState;
-import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.AuthenticationStrategy;
 import org.apache.http.client.NonRepeatableRequestException;
 import org.apache.http.client.UserTokenHandler;
@@ -62,7 +61,6 @@ import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.conn.routing.HttpRouteDirector;
 import org.apache.http.conn.scheme.Scheme;
 import org.apache.http.entity.BufferedHttpEntity;
-import org.apache.http.impl.auth.BasicScheme;
 import org.apache.http.impl.client.HttpAuthenticator;
 import org.apache.http.impl.client.RequestAbortedException;
 import org.apache.http.impl.client.TunnelRefusedException;
@@ -111,10 +109,10 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
 
     private final Log log = LogFactory.getLog(getClass());
 
+    private final HttpRequestExecutor requestExecutor;
     private final ClientConnectionManager connManager;
     private final ConnectionReuseStrategy reuseStrategy;
     private final ConnectionKeepAliveStrategy keepAliveStrategy;
-    private final HttpRequestExecutor requestExec;
     private final HttpProcessor proxyHttpProcessor;
     private final AuthenticationStrategy targetAuthStrategy;
     private final AuthenticationStrategy proxyAuthStrategy;
@@ -123,6 +121,7 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
     private final HttpParams params;
 
     public MainRequestExecutor(
+            final HttpRequestExecutor requestExecutor,
             final ClientConnectionManager connManager,
             final ConnectionReuseStrategy reuseStrategy,
             final ConnectionKeepAliveStrategy keepAliveStrategy,
@@ -130,6 +129,9 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
             final AuthenticationStrategy proxyAuthStrategy,
             final UserTokenHandler userTokenHandler,
             final HttpParams params) {
+        if (requestExecutor == null) {
+            throw new IllegalArgumentException("HTTP request executor may not be null");
+        }
         if (connManager == null) {
             throw new IllegalArgumentException("Client connection manager may not be null");
         }
@@ -152,11 +154,11 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
             throw new IllegalArgumentException("HTTP parameters may not be null");
         }
         this.authenticator      = new HttpAuthenticator();
-        this.requestExec        = new HttpRequestExecutor();
         this.proxyHttpProcessor = new ImmutableHttpProcessor(new HttpRequestInterceptor[] {
                 new RequestClientConnControl(),
                 new RequestUserAgent()
         } );
+        this.requestExecutor    = requestExecutor;
         this.connManager        = connManager;
         this.reuseStrategy      = reuseStrategy;
         this.keepAliveStrategy  = keepAliveStrategy;
@@ -188,12 +190,6 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
         AuthState proxyAuthState = (AuthState) context.getAttribute(ClientContext.PROXY_AUTH_STATE);
         if (proxyAuthState == null) {
             proxyAuthState = new AuthState();
-        }
-
-        String userinfo = request.getURI().getUserInfo();
-        if (userinfo != null) {
-            targetAuthState.update(
-                    new BasicScheme(), new UsernamePasswordCredentials(userinfo));
         }
 
         Object userToken = context.getAttribute(ClientContext.USER_TOKEN);
@@ -285,7 +281,7 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                     this.authenticator.generateAuthResponse(request, proxyAuthState, context);
                 }
 
-                response = requestExec.execute(request, managedConn, context);
+                response = requestExecutor.execute(request, managedConn, context);
                 response.setParams(params);
 
                 // The connection is in or can be brought to a re-usable state.
@@ -459,7 +455,7 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
         HttpRequest connect = createConnectRequest(route, context);
         connect.setParams(this.params);
 
-        this.requestExec.preProcess(connect, this.proxyHttpProcessor, context);
+        this.requestExecutor.preProcess(connect, this.proxyHttpProcessor, context);
 
         for (;;) {
             if (!managedConn.isOpen()) {
@@ -469,7 +465,7 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
             connect.removeHeaders(AUTH.PROXY_AUTH_RESP);
             this.authenticator.generateAuthResponse(connect, proxyAuthState, context);
 
-            response = this.requestExec.execute(connect, managedConn, context);
+            response = this.requestExecutor.execute(connect, managedConn, context);
             response.setParams(this.params);
 
             int status = response.getStatusLine().getStatusCode();

@@ -32,6 +32,7 @@ import java.net.URI;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.http.HttpEntity;
 import org.apache.http.HttpException;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpRequest;
@@ -50,6 +51,7 @@ import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.conn.routing.HttpRoutePlanner;
 import org.apache.http.params.HttpParams;
 import org.apache.http.protocol.HttpContext;
+import org.apache.http.util.EntityUtils;
 
 /**
  * The following parameters can be used to customize the behavior of this
@@ -105,60 +107,72 @@ public class RedirectFacade implements HttpClientRequestExecutor {
             throw new IllegalArgumentException("HTTP context may not be null");
         }
         HttpParams params = request.getParams();
-        int redirectCount = 0;
         int maxRedirects = params.getIntParameter(ClientPNames.MAX_REDIRECTS, 100);
         HttpRoute currentRoute = route;
         HttpRequestWrapper currentRequest = request;
-        for (;;) {
+        for (int redirectCount = 0;;) {
             HttpResponse response = requestExecutor.execute(
                     currentRoute, currentRequest, context, execAware);
-            if (HttpClientParams.isRedirecting(params) &&
-                    this.redirectStrategy.isRedirected(currentRequest, response, context)) {
+            try {
+                if (HttpClientParams.isRedirecting(params) &&
+                        this.redirectStrategy.isRedirected(currentRequest, response, context)) {
 
-                if (redirectCount >= maxRedirects) {
-                    throw new RedirectException("Maximum redirects ("+ maxRedirects + ") exceeded");
-                }
-                redirectCount++;
-
-                HttpRequest redirect = this.redirectStrategy.getRedirect(currentRequest, response, context);
-                currentRequest = HttpRequestWrapper.wrap(redirect);
-                currentRequest.setHeaders(request.getAllHeaders());
-                currentRequest.setParams(params);
-
-                URI uri = currentRequest.getURI();
-                if (uri.getHost() == null) {
-                    throw new ProtocolException("Redirect URI does not specify a valid host name: " +
-                            uri);
-                }
-
-                HttpHost newTarget = new HttpHost(uri.getHost(), uri.getPort(), uri.getScheme());
-
-                // Reset virtual host and auth states if redirecting to another host
-                if (!currentRoute.getTargetHost().equals(newTarget)) {
-                    AuthState targetAuthState = (AuthState) context.getAttribute(
-                            ClientContext.TARGET_AUTH_STATE);
-                    if (targetAuthState != null) {
-                        this.log.debug("Resetting target auth state");
-                        targetAuthState.reset();
+                    if (redirectCount >= maxRedirects) {
+                        throw new RedirectException("Maximum redirects ("+ maxRedirects + ") exceeded");
                     }
-                    AuthState proxyAuthState = (AuthState) context.getAttribute(
-                            ClientContext.PROXY_AUTH_STATE);
-                    if (proxyAuthState != null) {
-                        AuthScheme authScheme = proxyAuthState.getAuthScheme();
-                        if (authScheme != null && authScheme.isConnectionBased()) {
-                            this.log.debug("Resetting proxy auth state");
-                            proxyAuthState.reset();
+                    redirectCount++;
+
+                    HttpRequest redirect = this.redirectStrategy.getRedirect(currentRequest, response, context);
+                    HttpRequest original = currentRequest.getOriginal();
+                    currentRequest = HttpRequestWrapper.wrap(redirect);
+                    currentRequest.setHeaders(original.getAllHeaders());
+                    currentRequest.setParams(params);
+
+                    URI uri = currentRequest.getURI();
+                    if (uri.getHost() == null) {
+                        throw new ProtocolException("Redirect URI does not specify a valid host name: " +
+                                uri);
+                    }
+
+                    HttpHost newTarget = new HttpHost(uri.getHost(), uri.getPort(), uri.getScheme());
+
+                    // Reset virtual host and auth states if redirecting to another host
+                    if (!currentRoute.getTargetHost().equals(newTarget)) {
+                        AuthState targetAuthState = (AuthState) context.getAttribute(
+                                ClientContext.TARGET_AUTH_STATE);
+                        if (targetAuthState != null) {
+                            this.log.debug("Resetting target auth state");
+                            targetAuthState.reset();
                         }
+                        AuthState proxyAuthState = (AuthState) context.getAttribute(
+                                ClientContext.PROXY_AUTH_STATE);
+                        if (proxyAuthState != null) {
+                            AuthScheme authScheme = proxyAuthState.getAuthScheme();
+                            if (authScheme != null && authScheme.isConnectionBased()) {
+                                this.log.debug("Resetting proxy auth state");
+                                proxyAuthState.reset();
+                            }
+                        }
+                        request.setVirtualHost(null);
                     }
-                    request.setVirtualHost(null);
-                }
 
-                currentRoute = this.routePlanner.determineRoute(newTarget, currentRequest, context);
-                if (this.log.isDebugEnabled()) {
-                    this.log.debug("Redirecting to '" + uri + "' via " + currentRoute);
+                    currentRoute = this.routePlanner.determineRoute(newTarget, currentRequest, context);
+                    if (this.log.isDebugEnabled()) {
+                        this.log.debug("Redirecting to '" + uri + "' via " + currentRoute);
+                    }
+                    HttpEntity entity = response.getEntity();
+                    if (entity != null) {
+                        EntityUtils.consume(entity);
+                    }
+                } else {
+                    return response;
                 }
-            } else {
-                return response;
+            } catch (HttpException ex) {
+                HttpEntity entity = response.getEntity();
+                if (entity != null) {
+                    EntityUtils.consume(entity);
+                }
+                throw ex;
             }
         }
     }

@@ -83,9 +83,11 @@ public class ResponseContentEncoding implements HttpResponseInterceptor {
                     String codecname = codec.getName().toLowerCase(Locale.US);
                     if ("gzip".equals(codecname) || "x-gzip".equals(codecname)) {
                         response.setEntity(new GzipDecompressingEntity(response.getEntity()));
+                        uncompressed = true;
                         break;
                     } else if ("deflate".equals(codecname)) {
                         response.setEntity(new DeflateDecompressingEntity(response.getEntity()));
+                        uncompressed = true;
                         break;
                     } else if ("identity".equals(codecname)) {
 

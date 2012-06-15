@@ -48,7 +48,7 @@ import org.apache.http.protocol.HttpContext;
  */
 @NotThreadSafe // e.g. managedConn
 public class RetryFacade implements HttpClientRequestExecutor {
-    
+
     private final Log log = LogFactory.getLog(getClass());
 
     private final HttpClientRequestExecutor requestExecutor;
@@ -82,9 +82,9 @@ public class RetryFacade implements HttpClientRequestExecutor {
             throw new IllegalArgumentException("HTTP context may not be null");
         }
         Header[] origheaders = request.getAllHeaders();
-        for (int execCount = 0;; execCount++) {
+        for (int execCount = 1;; execCount++) {
             try {
-                this.requestExecutor.execute(route, request, context, execAware);
+                return this.requestExecutor.execute(route, request, context, execAware);
             } catch (IOException ex) {
                 HttpRequest original = request.getOriginal();
                 if (original instanceof HttpUriRequest && ((HttpUriRequest) original).isAborted()) {

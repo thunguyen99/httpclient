@@ -93,7 +93,6 @@ public class TestRequestWrapper extends BasicServerTestBase {
 
         Assert.assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
 
-        Assert.assertTrue(reqWrapper instanceof RequestWrapper);
         Assert.assertEquals("/path", reqWrapper.getRequestLine().getUri());
     }
 
@@ -115,7 +114,6 @@ public class TestRequestWrapper extends BasicServerTestBase {
 
         Assert.assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
 
-        Assert.assertTrue(reqWrapper instanceof RequestWrapper);
         Assert.assertEquals("/", reqWrapper.getRequestLine().getUri());
     }
 

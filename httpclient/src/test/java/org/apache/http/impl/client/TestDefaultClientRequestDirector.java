@@ -316,7 +316,6 @@ public class TestDefaultClientRequestDirector extends BasicServerTestBase {
 
         Assert.assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
 
-        Assert.assertTrue(reqWrapper instanceof RequestWrapper);
         Header[] myheaders = reqWrapper.getHeaders("my-header");
         Assert.assertNotNull(myheaders);
         Assert.assertEquals(1, myheaders.length);

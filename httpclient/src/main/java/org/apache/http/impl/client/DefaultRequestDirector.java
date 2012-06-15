@@ -126,8 +126,10 @@ import org.apache.http.util.EntityUtils;
  * </ul>
  *
  * @since 4.0
+ * 
+ * @deprecated (4.3)
  */
-@SuppressWarnings("deprecation")
+@Deprecated
 @NotThreadSafe // e.g. managedConn
 public class DefaultRequestDirector implements RequestDirector {
 

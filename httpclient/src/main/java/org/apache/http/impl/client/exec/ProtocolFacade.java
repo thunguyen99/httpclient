@@ -38,9 +38,13 @@ import org.apache.http.HttpHost;
 import org.apache.http.HttpResponse;
 import org.apache.http.ProtocolException;
 import org.apache.http.annotation.ThreadSafe;
+import org.apache.http.auth.AuthState;
+import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.methods.HttpExecutionAware;
+import org.apache.http.client.protocol.ClientContext;
 import org.apache.http.client.utils.URIUtils;
 import org.apache.http.conn.routing.HttpRoute;
+import org.apache.http.impl.auth.BasicScheme;
 import org.apache.http.protocol.ExecutionContext;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.protocol.HttpProcessor;
@@ -112,7 +116,16 @@ public class ProtocolFacade implements HttpClientRequestExecutor {
             throw new IllegalArgumentException("HTTP context may not be null");
         }
         HttpHost target = route.getTargetHost();
-        HttpHost proxy = route.getProxyHost();
+
+        // Get user info from the URI
+        AuthState targetAuthState = (AuthState) context.getAttribute(ClientContext.TARGET_AUTH_STATE);
+        if (targetAuthState != null) {
+            String userinfo = request.getURI().getUserInfo();
+            if (userinfo != null) {
+                targetAuthState.update(
+                        new BasicScheme(), new UsernamePasswordCredentials(userinfo));
+            }
+        }
 
         // Re-write request URI if needed
         rewriteRequestURI(request, route);
@@ -128,20 +141,20 @@ public class ProtocolFacade implements HttpClientRequestExecutor {
                 this.log.debug("Using virtual host" + virtualHost);
             }
         }
-        
+
         // Run request protocol interceptors
         context.setAttribute(ExecutionContext.HTTP_TARGET_HOST, virtualHost != null ? virtualHost : target);
-        context.setAttribute(ExecutionContext.HTTP_PROXY_HOST, proxy);
+        context.setAttribute(ClientContext.ROUTE, route);
         context.setAttribute(ExecutionContext.HTTP_REQUEST, request);
 
         this.httpProcessor.process(request, context);
-        
+
         HttpResponse response = this.requestExecutor.execute(route, request, context, execAware);
-        
+
         // Run response protocol interceptors
         context.setAttribute(ExecutionContext.HTTP_RESPONSE, response);
         this.httpProcessor.process(response, context);
-        
+
         return response;
     }
 

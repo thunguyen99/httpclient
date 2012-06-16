@@ -32,7 +32,6 @@ import java.net.URI;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.http.HttpEntity;
 import org.apache.http.HttpException;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpRequest;
@@ -160,17 +159,15 @@ public class RedirectFacade implements HttpClientRequestExecutor {
                     if (this.log.isDebugEnabled()) {
                         this.log.debug("Redirecting to '" + uri + "' via " + currentRoute);
                     }
-                    HttpEntity entity = response.getEntity();
-                    if (entity != null) {
-                        EntityUtils.consume(entity);
-                    }
+                    EntityUtils.consume(response.getEntity());
                 } else {
                     return response;
                 }
             } catch (HttpException ex) {
-                HttpEntity entity = response.getEntity();
-                if (entity != null) {
-                    EntityUtils.consume(entity);
+                try {
+                    EntityUtils.consume(response.getEntity());
+                } catch (IOException ioex) {
+                    this.log.warn(ex.getMessage(), ioex);
                 }
                 throw ex;
             }

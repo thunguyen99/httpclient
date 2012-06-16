@@ -24,7 +24,7 @@
  *
  */
 
-package org.apache.http.impl.conn;
+package org.apache.http.impl.client.integration;
 
 import java.io.IOException;
 import java.net.ConnectException;
@@ -50,9 +50,8 @@ import org.apache.http.conn.scheme.Scheme;
 import org.apache.http.conn.scheme.SchemeRegistry;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.impl.client.DefaultRequestDirector;
-import org.apache.http.localserver.BasicServerTestBase;
-import org.apache.http.localserver.LocalTestServer;
+import org.apache.http.impl.conn.PoolingClientConnectionManager;
+import org.apache.http.impl.conn.SchemeRegistryFactory;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.mockup.SocketFactoryMockup;
 import org.apache.http.params.BasicHttpParams;
@@ -69,14 +68,12 @@ import org.mockito.Mockito;
 /**
  *  Tests for Abort handling.
  */
-public class TestAbortHandling extends BasicServerTestBase {
+public class TestAbortHandling extends IntegrationTestBase {
 
     @Before
     public void setUp() throws Exception {
-        this.localServer = new LocalTestServer(null, null);
-        this.localServer.registerDefaultHandlers();
-        this.localServer.start();
-        this.httpclient = new DefaultHttpClient();
+        initClient();
+        startServer();
     }
 
     @Test

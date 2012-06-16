@@ -42,7 +42,7 @@ import org.apache.http.conn.scheme.Scheme;
 import org.apache.http.conn.scheme.SchemeRegistry;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.localserver.LocalTestServer;
-import org.apache.http.localserver.ServerTestBase;
+import org.apache.http.localserver.LocalServerTestBase;
 import org.apache.http.params.BasicHttpParams;
 import org.apache.http.params.HttpConnectionParams;
 import org.apache.http.params.HttpParams;
@@ -50,9 +50,8 @@ import org.apache.http.util.EntityUtils;
 import org.junit.Before;
 import org.junit.Test;
 
-public class TestIdleConnectionEviction extends ServerTestBase {
+public class TestIdleConnectionEviction extends LocalServerTestBase {
 
-    @Override
     @Before
     public void setUp() throws Exception {
         this.localServer = new LocalTestServer(null, null);

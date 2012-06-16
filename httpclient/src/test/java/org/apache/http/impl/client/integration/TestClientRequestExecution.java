@@ -23,7 +23,7 @@
  * <http://www.apache.org/>.
  */
 
-package org.apache.http.impl.client;
+package org.apache.http.impl.client.integration;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -44,8 +44,7 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.params.ClientPNames;
 import org.apache.http.entity.InputStreamEntity;
 import org.apache.http.entity.StringEntity;
-import org.apache.http.localserver.BasicServerTestBase;
-import org.apache.http.localserver.LocalTestServer;
+import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.protocol.BasicHttpContext;
 import org.apache.http.protocol.ExecutionContext;
 import org.apache.http.protocol.HttpContext;
@@ -57,16 +56,14 @@ import org.junit.Before;
 import org.junit.Test;
 
 /**
- * Unit tests for {@link DefaultRequestDirector}
+ * Client protocol handling tests.
  */
-public class TestDefaultClientRequestDirector extends BasicServerTestBase {
+public class TestClientRequestExecution extends IntegrationTestBase {
 
     @Before
     public void setUp() throws Exception {
-        this.localServer = new LocalTestServer(null, null);
-        this.localServer.registerDefaultHandlers();
-        this.localServer.start();
-        this.httpclient = new DefaultHttpClient();
+        startServer();
+        initClient();
     }
 
     private static class SimpleService implements HttpRequestHandler {

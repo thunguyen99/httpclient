@@ -24,7 +24,7 @@
  * <http://www.apache.org/>.
  *
  */
-package org.apache.http.impl.auth;
+package org.apache.http.impl.client.integration;
 
 import java.io.IOException;
 import java.security.Principal;
@@ -41,9 +41,8 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.params.AuthPolicy;
 import org.apache.http.client.params.ClientPNames;
 import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.localserver.BasicServerTestBase;
-import org.apache.http.localserver.LocalTestServer;
+import org.apache.http.impl.auth.SPNegoScheme;
+import org.apache.http.impl.auth.SPNegoSchemeFactory;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.params.HttpParams;
 import org.apache.http.protocol.HttpContext;
@@ -64,15 +63,12 @@ import org.mockito.Mockito;
 /**
  * Tests for {@link NegotiateScheme}.
  */
-public class TestSPNegoScheme extends BasicServerTestBase {
+public class TestSPNegoScheme extends IntegrationTestBase {
 
     @Before
     public void setUp() throws Exception {
-        this.localServer = new LocalTestServer(null, null);
-
-        this.localServer.registerDefaultHandlers();
-        this.localServer.start();
-        this.httpclient = new DefaultHttpClient();
+        startServer();
+        initClient();
     }
 
     /**

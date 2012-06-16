@@ -25,7 +25,7 @@
  *
  */
 
-package org.apache.http.impl.client;
+package org.apache.http.impl.client.integration;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -54,12 +54,15 @@ import org.apache.http.conn.scheme.Scheme;
 import org.apache.http.conn.scheme.SchemeRegistry;
 import org.apache.http.entity.InputStreamEntity;
 import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.BasicResponseHandler;
+import org.apache.http.impl.client.DecompressingHttpClient;
+import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.impl.conn.PoolingClientConnectionManager;
-import org.apache.http.localserver.ServerTestBase;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.protocol.HttpRequestHandler;
 import org.apache.http.util.EntityUtils;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 
 /**
@@ -67,8 +70,14 @@ import org.junit.Test;
  * require no intervention from the user of HttpClient, but we still want to let clients do their
  * own thing if they so wish.
  */
-public class TestContentCodings extends ServerTestBase {
+public class TestContentCodings extends IntegrationTestBase {
 
+    @Before
+    public void setUp() throws Exception {
+        startServer();
+        initClient();
+    }
+    
     /**
      * Test for when we don't get an entity back; e.g. for a 204 or 304 response; nothing blows
      * up with the new behaviour.

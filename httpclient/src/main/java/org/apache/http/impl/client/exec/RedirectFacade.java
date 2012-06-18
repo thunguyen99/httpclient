@@ -35,7 +35,6 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.http.HttpException;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpRequest;
-import org.apache.http.HttpResponse;
 import org.apache.http.ProtocolException;
 import org.apache.http.annotation.ThreadSafe;
 import org.apache.http.auth.AuthScheme;
@@ -50,7 +49,6 @@ import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.conn.routing.HttpRoutePlanner;
 import org.apache.http.params.HttpParams;
 import org.apache.http.protocol.HttpContext;
-import org.apache.http.util.EntityUtils;
 
 /**
  * The following parameters can be used to customize the behavior of this
@@ -91,7 +89,7 @@ public class RedirectFacade implements HttpClientRequestExecutor {
         this.redirectStrategy = redirectStrategy;
     }
 
-    public HttpResponse execute(
+    public HttpResponseWrapper execute(
             final HttpRoute route,
             final HttpRequestWrapper request,
             final HttpContext context,
@@ -110,7 +108,7 @@ public class RedirectFacade implements HttpClientRequestExecutor {
         HttpRoute currentRoute = route;
         HttpRequestWrapper currentRequest = request;
         for (int redirectCount = 0;;) {
-            HttpResponse response = requestExecutor.execute(
+            HttpResponseWrapper response = requestExecutor.execute(
                     currentRoute, currentRequest, context, execAware);
             try {
                 if (HttpClientParams.isRedirecting(params) &&
@@ -159,15 +157,23 @@ public class RedirectFacade implements HttpClientRequestExecutor {
                     if (this.log.isDebugEnabled()) {
                         this.log.debug("Redirecting to '" + uri + "' via " + currentRoute);
                     }
-                    EntityUtils.consume(response.getEntity());
+                    response.releaseConnection();
                 } else {
                     return response;
                 }
+            } catch (RuntimeException ex) {
+                response.close();
+                throw ex;
+            } catch (IOException ex) {
+                response.close();
+                throw ex;
             } catch (HttpException ex) {
+                // Protocol exception related to a direct.
+                // The underlying connection may still be salvaged.
                 try {
-                    EntityUtils.consume(response.getEntity());
+                    response.releaseConnection();
                 } catch (IOException ioex) {
-                    this.log.warn(ex.getMessage(), ioex);
+                    this.log.debug("I/O error while releasing connection", ioex);
                 }
                 throw ex;
             }

@@ -34,7 +34,6 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.http.Header;
 import org.apache.http.HttpException;
 import org.apache.http.HttpRequest;
-import org.apache.http.HttpResponse;
 import org.apache.http.annotation.NotThreadSafe;
 import org.apache.http.client.HttpRequestRetryHandler;
 import org.apache.http.client.NonRepeatableRequestException;
@@ -67,7 +66,7 @@ public class RetryFacade implements HttpClientRequestExecutor {
         this.retryHandler = retryHandler;
     }
 
-    public HttpResponse execute(
+    public HttpResponseWrapper execute(
             final HttpRoute route,
             final HttpRequestWrapper request,
             final HttpContext context,

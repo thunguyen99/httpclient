@@ -168,7 +168,7 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
         this.params             = params;
     }
 
-    public HttpResponse execute(
+    public HttpResponseWrapper execute(
             final HttpRoute route,
             final HttpRequestWrapper request,
             final HttpContext context,
@@ -351,14 +351,10 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
                 } catch(IOException ex) {
                     this.log.debug("IOException releasing connection", ex);
                 }
+                return HttpResponseWrapper.wrap(response, null);
             } else {
-                // install an auto-release entity
-                entity = new ManagedEntity(entity, managedConn, execAware);
-                response.setEntity(entity);
+                return HttpResponseWrapper.wrap(response, managedConn);
             }
-
-            return response;
-
         } catch (ConnectionShutdownException ex) {
             InterruptedIOException ioex = new InterruptedIOException(
                     "Connection has been shut down");

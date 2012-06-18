@@ -35,7 +35,6 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.http.HttpException;
 import org.apache.http.HttpHost;
-import org.apache.http.HttpResponse;
 import org.apache.http.ProtocolException;
 import org.apache.http.annotation.ThreadSafe;
 import org.apache.http.auth.AuthState;
@@ -101,7 +100,7 @@ public class ProtocolFacade implements HttpClientRequestExecutor {
         }
     }
 
-    public HttpResponse execute(
+    public HttpResponseWrapper execute(
             final HttpRoute route,
             final HttpRequestWrapper request,
             final HttpContext context,
@@ -149,13 +148,22 @@ public class ProtocolFacade implements HttpClientRequestExecutor {
 
         this.httpProcessor.process(request, context);
 
-        HttpResponse response = this.requestExecutor.execute(route, request, context, execAware);
-
-        // Run response protocol interceptors
-        context.setAttribute(ExecutionContext.HTTP_RESPONSE, response);
-        this.httpProcessor.process(response, context);
-
-        return response;
+        HttpResponseWrapper response = this.requestExecutor.execute(route, request, context, execAware);
+        try {
+            // Run response protocol interceptors
+            context.setAttribute(ExecutionContext.HTTP_RESPONSE, response);
+            this.httpProcessor.process(response, context);
+            return response;
+        } catch (RuntimeException ex) {
+            response.close();
+            throw ex;
+        } catch (IOException ex) {
+            response.close();
+            throw ex;
+        } catch (HttpException ex) {
+            response.close();
+            throw ex;
+        }
     }
 
 }

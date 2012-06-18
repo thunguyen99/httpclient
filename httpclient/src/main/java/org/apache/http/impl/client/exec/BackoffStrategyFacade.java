@@ -31,7 +31,6 @@ import java.io.IOException;
 import java.lang.reflect.UndeclaredThrowableException;
 
 import org.apache.http.HttpException;
-import org.apache.http.HttpResponse;
 import org.apache.http.annotation.ThreadSafe;
 import org.apache.http.client.BackoffManager;
 import org.apache.http.client.ConnectionBackoffStrategy;
@@ -68,7 +67,7 @@ public class BackoffStrategyFacade implements HttpClientRequestExecutor {
         this.backoffManager = backoffManager;
     }
 
-    public HttpResponse execute(
+    public HttpResponseWrapper execute(
             final HttpRoute route,
             final HttpRequestWrapper request,
             final HttpContext context,
@@ -82,18 +81,17 @@ public class BackoffStrategyFacade implements HttpClientRequestExecutor {
         if (context == null) {
             throw new IllegalArgumentException("HTTP context may not be null");
         }
-        HttpResponse out;
+        HttpResponseWrapper out = null;
         try {
             out = this.requestExecutor.execute(route, request, context, execAware);
-        } catch (RuntimeException ex) {
-            if (this.connectionBackoffStrategy.shouldBackoff(ex)) {
-                this.backoffManager.backOff(route);
-            }
-            throw ex;
         } catch (Exception ex) {
+            if (out != null) {
+                out.close();
+            }
             if (this.connectionBackoffStrategy.shouldBackoff(ex)) {
                 this.backoffManager.backOff(route);
             }
+            if (ex instanceof RuntimeException) throw (RuntimeException) ex;
             if (ex instanceof HttpException) throw (HttpException) ex;
             if (ex instanceof IOException) throw (IOException) ex;
             throw new UndeclaredThrowableException(ex);

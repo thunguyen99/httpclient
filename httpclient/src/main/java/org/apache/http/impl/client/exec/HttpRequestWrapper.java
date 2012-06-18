@@ -51,9 +51,8 @@ import org.apache.http.params.HttpProtocolParams;
 import org.apache.http.protocol.HTTP;
 
 /**
- * A wrapper class for {@link HttpRequest}s that can be used to change
- * properties of the current request without modifying the original
- * object.
+ * A wrapper class for {@link HttpRequest} that can be used to change properties of the current
+ * request without modifying the original object.
  *
  * @since 4.3
  */
@@ -67,7 +66,7 @@ public class HttpRequestWrapper extends AbstractHttpMessage implements HttpReque
     private ProtocolVersion version;
     private HttpHost virtualHost;
 
-    HttpRequestWrapper(
+    private HttpRequestWrapper(
             final ProtocolVersion version,
             final URI uri,
             final String method,
@@ -195,7 +194,7 @@ public class HttpRequestWrapper extends AbstractHttpMessage implements HttpReque
                 super.writeTo(outstream);
             }
         }
-        
+
     }
 
     public static HttpRequestWrapper wrap(final HttpRequest request) throws ProtocolException {

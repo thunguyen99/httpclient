@@ -42,14 +42,14 @@ import org.apache.http.protocol.HttpContext;
  * @since 4.3
  */
 @ThreadSafe
-public class BackoffStrategyFacade implements HttpClientRequestExecutor {
+public class BackoffStrategyExec implements ClientExecChain {
 
-    private final HttpClientRequestExecutor requestExecutor;
+    private final ClientExecChain requestExecutor;
     private final ConnectionBackoffStrategy connectionBackoffStrategy;
     private final BackoffManager backoffManager;
 
-    public BackoffStrategyFacade(
-            final HttpClientRequestExecutor requestExecutor,
+    public BackoffStrategyExec(
+            final ClientExecChain requestExecutor,
             final ConnectionBackoffStrategy connectionBackoffStrategy,
             final BackoffManager backoffManager) {
         super();

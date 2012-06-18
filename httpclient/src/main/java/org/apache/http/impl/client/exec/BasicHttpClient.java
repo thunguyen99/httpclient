@@ -65,11 +65,11 @@ public abstract class BasicHttpClient implements HttpClient {
 
     private final Log log = LogFactory.getLog(getClass());
 
-    private final HttpClientRequestExecutor requestExecutor;
+    private final ClientExecChain requestExecutor;
     private final HttpRoutePlanner routePlanner;
 
     public BasicHttpClient(
-            final HttpClientRequestExecutor requestExecutor,
+            final ClientExecChain requestExecutor,
             final HttpRoutePlanner routePlanner) {
         super();
         if (requestExecutor == null) {

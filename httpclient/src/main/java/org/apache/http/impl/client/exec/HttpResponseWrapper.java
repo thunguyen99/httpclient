@@ -50,9 +50,8 @@ import org.apache.http.params.HttpParams;
 import org.apache.http.util.EntityUtils;
 
 /**
- * A wrapper class for {@link HttpResponse}s that can be used to change
- * properties of the current request without modifying the original
- * object.
+ * A wrapper class for {@link HttpResponse} that can be used to manage client connection 
+ * associated with the original response.
  *
  * @since 4.3
  */

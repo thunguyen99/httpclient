@@ -62,16 +62,16 @@ import org.apache.http.protocol.HttpContext;
  * @since 4.3
  */
 @ThreadSafe
-public class RedirectFacade implements HttpClientRequestExecutor {
+public class RedirectExec implements ClientExecChain {
 
     private final Log log = LogFactory.getLog(getClass());
 
-    private final HttpClientRequestExecutor requestExecutor;
+    private final ClientExecChain requestExecutor;
     private final RedirectStrategy redirectStrategy;
     private final HttpRoutePlanner routePlanner;
 
-    public RedirectFacade(
-            final HttpClientRequestExecutor requestExecutor,
+    public RedirectExec(
+            final ClientExecChain requestExecutor,
             final HttpRoutePlanner routePlanner,
             final RedirectStrategy redirectStrategy) {
         super();

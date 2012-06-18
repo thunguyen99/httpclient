@@ -47,7 +47,7 @@ import org.apache.http.protocol.HttpContext;
  *
  * @since 4.3
  */
-public interface HttpClientRequestExecutor {
+public interface ClientExecChain {
 
     HttpResponseWrapper execute(
             HttpRoute route,

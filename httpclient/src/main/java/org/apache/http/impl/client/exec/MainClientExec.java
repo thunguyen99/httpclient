@@ -105,7 +105,7 @@ import org.apache.http.util.EntityUtils;
  * @since 4.3
  */
 @ThreadSafe
-public class MainRequestExecutor implements HttpClientRequestExecutor {
+public class MainClientExec implements ClientExecChain {
 
     private final Log log = LogFactory.getLog(getClass());
 
@@ -120,7 +120,7 @@ public class MainRequestExecutor implements HttpClientRequestExecutor {
     private final UserTokenHandler userTokenHandler;
     private final HttpParams params;
 
-    public MainRequestExecutor(
+    public MainClientExec(
             final HttpRequestExecutor requestExecutor,
             final ClientConnectionManager connManager,
             final ConnectionReuseStrategy reuseStrategy,

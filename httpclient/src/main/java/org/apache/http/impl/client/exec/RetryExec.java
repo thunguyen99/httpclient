@@ -46,15 +46,15 @@ import org.apache.http.protocol.HttpContext;
  * @since 4.3
  */
 @NotThreadSafe // e.g. managedConn
-public class RetryFacade implements HttpClientRequestExecutor {
+public class RetryExec implements ClientExecChain {
 
     private final Log log = LogFactory.getLog(getClass());
 
-    private final HttpClientRequestExecutor requestExecutor;
+    private final ClientExecChain requestExecutor;
     private final HttpRequestRetryHandler retryHandler;
 
-    public RetryFacade(
-            final HttpClientRequestExecutor requestExecutor,
+    public RetryExec(
+            final ClientExecChain requestExecutor,
             final HttpRequestRetryHandler retryHandler) {
         if (requestExecutor == null) {
             throw new IllegalArgumentException("HTTP request executor may not be null");

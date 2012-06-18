@@ -52,15 +52,15 @@ import org.apache.http.protocol.HttpProcessor;
  * @since 4.3
  */
 @ThreadSafe
-public class ProtocolFacade implements HttpClientRequestExecutor {
+public class ProtocolExec implements ClientExecChain {
 
     private final Log log = LogFactory.getLog(getClass());
 
-    private final HttpClientRequestExecutor requestExecutor;
+    private final ClientExecChain requestExecutor;
     private final HttpProcessor httpProcessor;
 
-    public ProtocolFacade(
-            final HttpClientRequestExecutor requestExecutor,
+    public ProtocolExec(
+            final ClientExecChain requestExecutor,
             final HttpProcessor httpProcessor) {
         if (requestExecutor == null) {
             throw new IllegalArgumentException("HTTP client request executor may not be null");

@@ -48,12 +48,12 @@ import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.conn.ConnectionKeepAliveStrategy;
 import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.conn.routing.HttpRoutePlanner;
-import org.apache.http.impl.client.exec.HttpClientRequestExecutor;
+import org.apache.http.impl.client.exec.ClientExecChain;
 import org.apache.http.impl.client.exec.HttpRequestWrapper;
-import org.apache.http.impl.client.exec.MainRequestExecutor;
-import org.apache.http.impl.client.exec.ProtocolFacade;
-import org.apache.http.impl.client.exec.RedirectFacade;
-import org.apache.http.impl.client.exec.RetryFacade;
+import org.apache.http.impl.client.exec.MainClientExec;
+import org.apache.http.impl.client.exec.ProtocolExec;
+import org.apache.http.impl.client.exec.RedirectExec;
+import org.apache.http.impl.client.exec.RetryExec;
 import org.apache.http.params.HttpParams;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.protocol.HttpProcessor;
@@ -64,7 +64,7 @@ class RequestDirectorAdaptor implements RequestDirector {
 
     private final HttpRoutePlanner routePlanner;
     private final HttpParams params;
-    private final HttpClientRequestExecutor execChain;
+    private final ClientExecChain execChain;
 
     public RequestDirectorAdaptor(
             final HttpRequestExecutor requestExecutor,
@@ -81,12 +81,12 @@ class RequestDirectorAdaptor implements RequestDirector {
             final HttpParams params) {
         this.routePlanner = rouplan;
         this.params = params;
-        MainRequestExecutor mainExecutor = new MainRequestExecutor(
+        MainClientExec mainExecutor = new MainClientExec(
                 requestExecutor, connman, reustrat, kastrat, targetAuthStrategy,
                 proxyAuthStrategy, userTokenHandler, params);
-        ProtocolFacade protocolFacade = new ProtocolFacade(mainExecutor, httpProcessor);
-        RetryFacade retryFacade = new RetryFacade(protocolFacade, retryHandler);
-        RedirectFacade redirectFacade = new RedirectFacade(retryFacade, rouplan, redirectStrategy);
+        ProtocolExec protocolFacade = new ProtocolExec(mainExecutor, httpProcessor);
+        RetryExec retryFacade = new RetryExec(protocolFacade, retryHandler);
+        RedirectExec redirectFacade = new RedirectExec(retryFacade, rouplan, redirectStrategy);
         this.execChain = redirectFacade;
     }
 

@@ -70,7 +70,10 @@ import org.apache.http.util.EntityUtils;
  * in either order and still have cacheable responses be cached.</p> 
  * 
  * @since 4.2
+ * 
+ * @deprecated (4.3) use {@link HttpClientBuilder}
  */
+@Deprecated
 public class DecompressingHttpClient implements HttpClient {
 
     private HttpClient backend;

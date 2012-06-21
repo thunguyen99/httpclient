@@ -118,7 +118,8 @@ public class MainClientExec implements ClientExecChain {
     private final AuthenticationStrategy proxyAuthStrategy;
     private final HttpAuthenticator authenticator;
     private final UserTokenHandler userTokenHandler;
-    private final HttpParams params;
+    private final HttpRouteDirector routeDirector;
+
 
     public MainClientExec(
             final HttpRequestExecutor requestExecutor,
@@ -127,8 +128,7 @@ public class MainClientExec implements ClientExecChain {
             final ConnectionKeepAliveStrategy keepAliveStrategy,
             final AuthenticationStrategy targetAuthStrategy,
             final AuthenticationStrategy proxyAuthStrategy,
-            final UserTokenHandler userTokenHandler,
-            final HttpParams params) {
+            final UserTokenHandler userTokenHandler) {
         if (requestExecutor == null) {
             throw new IllegalArgumentException("HTTP request executor may not be null");
         }
@@ -150,14 +150,12 @@ public class MainClientExec implements ClientExecChain {
         if (userTokenHandler == null) {
             throw new IllegalArgumentException("User token handler may not be null");
         }
-        if (params == null) {
-            throw new IllegalArgumentException("HTTP parameters may not be null");
-        }
         this.authenticator      = new HttpAuthenticator();
         this.proxyHttpProcessor = new ImmutableHttpProcessor(new HttpRequestInterceptor[] {
                 new RequestClientConnControl(),
                 new RequestUserAgent()
         } );
+        this.routeDirector      = new BasicRouteDirector();
         this.requestExecutor    = requestExecutor;
         this.connManager        = connManager;
         this.reuseStrategy      = reuseStrategy;
@@ -165,7 +163,6 @@ public class MainClientExec implements ClientExecChain {
         this.targetAuthStrategy = targetAuthStrategy;
         this.proxyAuthStrategy  = proxyAuthStrategy;
         this.userTokenHandler   = userTokenHandler;
-        this.params             = params;
     }
 
     public HttpResponseWrapper execute(
@@ -191,6 +188,8 @@ public class MainClientExec implements ClientExecChain {
         if (proxyAuthState == null) {
             proxyAuthState = new AuthState();
         }
+
+        HttpParams params = request.getParams();
 
         Object userToken = context.getAttribute(ClientContext.USER_TOKEN);
 
@@ -251,7 +250,7 @@ public class MainClientExec implements ClientExecChain {
                 }
 
                 try {
-                    establishRoute(proxyAuthState, managedConn, route, context);
+                    establishRoute(proxyAuthState, managedConn, route, request, context);
                 } catch (TunnelRefusedException ex) {
                     if (this.log.isDebugEnabled()) {
                         this.log.debug(ex.getMessage());
@@ -379,25 +378,25 @@ public class MainClientExec implements ClientExecChain {
             final AuthState proxyAuthState,
             final ManagedClientConnection managedConn,
             final HttpRoute route,
+            final HttpRequest request,
             final HttpContext context) throws HttpException, IOException {
-
-        HttpRouteDirector rowdy = new BasicRouteDirector();
+        HttpParams params = request.getParams();
         int step;
         do {
             HttpRoute fact = managedConn.getRoute();
-            step = rowdy.nextStep(route, fact);
+            step = this.routeDirector.nextStep(route, fact);
 
             switch (step) {
 
             case HttpRouteDirector.CONNECT_TARGET:
             case HttpRouteDirector.CONNECT_PROXY:
-                managedConn.open(route, context, this.params);
+                managedConn.open(route, context, params);
                 break;
 
             case HttpRouteDirector.TUNNEL_TARGET: {
-                boolean secure = createTunnelToTarget(proxyAuthState, managedConn, route, context);
+                boolean secure = createTunnelToTarget(proxyAuthState, managedConn, route, request, context);
                 this.log.debug("Tunnel to target created.");
-                managedConn.tunnelTarget(secure, this.params);
+                managedConn.tunnelTarget(secure, params);
             }   break;
 
             case HttpRouteDirector.TUNNEL_PROXY: {
@@ -408,13 +407,11 @@ public class MainClientExec implements ClientExecChain {
                 final int hop = fact.getHopCount()-1; // the hop to establish
                 boolean secure = createTunnelToProxy(route, hop, context);
                 this.log.debug("Tunnel to proxy created.");
-                managedConn.tunnelProxy(route.getHopTarget(hop),
-                                        secure, this.params);
+                managedConn.tunnelProxy(route.getHopTarget(hop), secure, params);
             }   break;
 
-
             case HttpRouteDirector.LAYER_PROTOCOL:
-                managedConn.layerProtocol(context, this.params);
+                managedConn.layerProtocol(context, params);
                 break;
 
             case HttpRouteDirector.UNREACHABLE:
@@ -443,26 +440,43 @@ public class MainClientExec implements ClientExecChain {
             final AuthState proxyAuthState,
             final ManagedClientConnection managedConn,
             final HttpRoute route,
+            final HttpRequest request,
             final HttpContext context) throws HttpException, IOException {
 
+        HttpParams params = request.getParams();
+        HttpHost target = route.getTargetHost();
         HttpHost proxy = route.getProxyHost();
         HttpResponse response = null;
 
-        HttpRequest connect = createConnectRequest(route, context);
-        connect.setParams(this.params);
+        String host = target.getHostName();
+        int port = target.getPort();
+        if (port < 0) {
+            Scheme scheme = connManager.getSchemeRegistry().
+                getScheme(target.getSchemeName());
+            port = scheme.getDefaultPort();
+        }
+
+        StringBuilder buffer = new StringBuilder(host.length() + 6);
+        buffer.append(host);
+        buffer.append(':');
+        buffer.append(Integer.toString(port));
+
+        String authority = buffer.toString();
+        ProtocolVersion ver = HttpProtocolParams.getVersion(params);
+        HttpRequest connect = new BasicHttpRequest("CONNECT", authority, ver);
+        connect.setParams(params);
 
         this.requestExecutor.preProcess(connect, this.proxyHttpProcessor, context);
 
         for (;;) {
             if (!managedConn.isOpen()) {
-                managedConn.open(route, context, this.params);
+                managedConn.open(route, context, params);
             }
 
             connect.removeHeaders(AUTH.PROXY_AUTH_RESP);
             this.authenticator.generateAuthResponse(connect, proxyAuthState, context);
 
             response = this.requestExecutor.execute(connect, managedConn, context);
-            response.setParams(this.params);
 
             int status = response.getStatusLine().getStatusCode();
             if (status < 200) {
@@ -470,7 +484,7 @@ public class MainClientExec implements ClientExecChain {
                         response.getStatusLine());
             }
 
-            if (HttpClientParams.isAuthenticating(this.params)) {
+            if (HttpClientParams.isAuthenticating(params)) {
                 if (this.authenticator.isAuthenticationRequested(proxy, response,
                         this.proxyAuthStrategy, proxyAuthState, context)) {
                     if (this.authenticator.handleAuthChallenge(proxy, response,
@@ -537,38 +551,6 @@ public class MainClientExec implements ClientExecChain {
         // createTunnelToTarget to facilitate re-use for proxy tunnelling.
 
         throw new HttpException("Proxy chains are not supported.");
-    }
-
-    /**
-     * Creates the CONNECT request for tunnelling.
-     * Called by {@link #createTunnelToTarget createTunnelToTarget}.
-     */
-    private HttpRequest createConnectRequest(
-            final HttpRoute route,
-            final HttpContext context) {
-        // see RFC 2817, section 5.2 and
-        // INTERNET-DRAFT: Tunneling TCP based protocols through
-        // Web proxy servers
-
-        HttpHost target = route.getTargetHost();
-
-        String host = target.getHostName();
-        int port = target.getPort();
-        if (port < 0) {
-            Scheme scheme = connManager.getSchemeRegistry().
-                getScheme(target.getSchemeName());
-            port = scheme.getDefaultPort();
-        }
-
-        StringBuilder buffer = new StringBuilder(host.length() + 6);
-        buffer.append(host);
-        buffer.append(':');
-        buffer.append(Integer.toString(port));
-
-        String authority = buffer.toString();
-        ProtocolVersion ver = HttpProtocolParams.getVersion(params);
-        HttpRequest req = new BasicHttpRequest("CONNECT", authority, ver);
-        return req;
     }
 
     private boolean needAuthentication(

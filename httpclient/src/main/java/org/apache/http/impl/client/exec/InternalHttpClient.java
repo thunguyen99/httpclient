@@ -28,12 +28,7 @@
 package org.apache.http.impl.client.exec;
 
 import java.io.IOException;
-import java.lang.reflect.UndeclaredThrowableException;
-import java.net.URI;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.http.HttpEntity;
 import org.apache.http.HttpException;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpRequest;
@@ -41,70 +36,50 @@ import org.apache.http.HttpResponse;
 import org.apache.http.annotation.ThreadSafe;
 import org.apache.http.auth.AuthState;
 import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.methods.HttpExecutionAware;
-import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.client.params.ClientPNames;
 import org.apache.http.client.protocol.ClientContext;
-import org.apache.http.client.utils.URIUtils;
+import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.conn.routing.HttpRoutePlanner;
+import org.apache.http.impl.client.AbstractBasicHttpClient;
 import org.apache.http.impl.client.ClientParamsStack;
 import org.apache.http.impl.client.RequestAbortedException;
 import org.apache.http.params.HttpParams;
+import org.apache.http.params.SyncBasicHttpParams;
 import org.apache.http.protocol.BasicHttpContext;
 import org.apache.http.protocol.HttpContext;
-import org.apache.http.util.EntityUtils;
 
 /**
  * @since 4.3
  */
 @ThreadSafe
-public abstract class BasicHttpClient implements HttpClient {
+public class InternalHttpClient extends AbstractBasicHttpClient {
 
-    private final Log log = LogFactory.getLog(getClass());
-
-    private final ClientExecChain requestExecutor;
+    private final ClientExecChain execChain;
+    private final ClientConnectionManager connManager;
     private final HttpRoutePlanner routePlanner;
+    private final HttpParams params;
 
-    public BasicHttpClient(
-            final ClientExecChain requestExecutor,
-            final HttpRoutePlanner routePlanner) {
+    public InternalHttpClient(
+            final ClientExecChain execChain,
+            final ClientConnectionManager connManager,
+            final HttpRoutePlanner routePlanner,
+            final HttpParams params) {
         super();
-        if (requestExecutor == null) {
-            throw new IllegalArgumentException("HTTP client request executor may not be null");
+        if (execChain == null) {
+            throw new IllegalArgumentException("HTTP client exec chain may not be null");
+        }
+        if (connManager == null) {
+            throw new IllegalArgumentException("HTTP connection manager may not be null");
         }
         if (routePlanner == null) {
             throw new IllegalArgumentException("HTTP route planner may not be null");
         }
-        this.requestExecutor = requestExecutor;
+        this.execChain = execChain;
+        this.connManager = connManager;
         this.routePlanner = routePlanner;
-    }
-
-    public final HttpResponse execute(
-            final HttpUriRequest request,
-            final HttpContext context) throws IOException, ClientProtocolException {
-        if (request == null) {
-            throw new IllegalArgumentException("Request must not be null.");
-        }
-        return execute(determineTarget(request), request, context);
-    }
-
-    private static HttpHost determineTarget(HttpUriRequest request) throws ClientProtocolException {
-        // A null target may be acceptable if there is a default target.
-        // Otherwise, the null target is detected in the director.
-        HttpHost target = null;
-
-        URI requestURI = request.getURI();
-        if (requestURI.isAbsolute()) {
-            target = URIUtils.extractHost(requestURI);
-            if (target == null) {
-                throw new ClientProtocolException("URI does not specify a valid host name: "
-                        + requestURI);
-            }
-        }
-        return target;
+        this.params = params != null ? params : new SyncBasicHttpParams();
     }
 
     private HttpRoute determineRoute(
@@ -130,13 +105,7 @@ public abstract class BasicHttpClient implements HttpClient {
         }
     }
 
-    public final HttpResponse execute(
-            final HttpHost target,
-            final HttpRequest request) throws IOException, ClientProtocolException {
-        return execute(target, request, (HttpContext) null);
-    }
-
-    public final HttpResponse execute(
+    public HttpResponse execute(
             final HttpHost target,
             final HttpRequest request,
             final HttpContext context) throws IOException, ClientProtocolException {
@@ -160,66 +129,18 @@ public abstract class BasicHttpClient implements HttpClient {
                 }
             }
             HttpRoute route = determineRoute(target, request, context);
-            return this.requestExecutor.execute(route, wrapper, execContext, execListner);
+            return this.execChain.execute(route, wrapper, execContext, execListner);
         } catch (HttpException httpException) {
             throw new ClientProtocolException(httpException);
         }
     }
 
-    public <T> T execute(final HttpUriRequest request,
-            final ResponseHandler<? extends T> responseHandler) throws IOException,
-            ClientProtocolException {
-        return execute(request, responseHandler, null);
+    public HttpParams getParams() {
+        return this.params;
     }
 
-    public <T> T execute(final HttpUriRequest request,
-            final ResponseHandler<? extends T> responseHandler, final HttpContext context)
-            throws IOException, ClientProtocolException {
-        HttpHost target = determineTarget(request);
-        return execute(target, request, responseHandler, context);
-    }
-
-    public <T> T execute(final HttpHost target, final HttpRequest request,
-            final ResponseHandler<? extends T> responseHandler) throws IOException,
-            ClientProtocolException {
-        return execute(target, request, responseHandler, null);
-    }
-
-    public <T> T execute(final HttpHost target, final HttpRequest request,
-            final ResponseHandler<? extends T> responseHandler, final HttpContext context)
-            throws IOException, ClientProtocolException {
-        if (responseHandler == null) {
-            throw new IllegalArgumentException("Response handler must not be null.");
-        }
-
-        HttpResponse response = execute(target, request, context);
-
-        T result;
-        try {
-            result = responseHandler.handleResponse(response);
-        } catch (Exception t) {
-            HttpEntity entity = response.getEntity();
-            try {
-                EntityUtils.consume(entity);
-            } catch (Exception t2) {
-                // Log this exception. The original exception is more
-                // important and will be thrown to the caller.
-                this.log.warn("Error consuming content after an exception.", t2);
-            }
-            if (t instanceof RuntimeException) {
-                throw (RuntimeException) t;
-            }
-            if (t instanceof IOException) {
-                throw (IOException) t;
-            }
-            throw new UndeclaredThrowableException(t);
-        }
-
-        // Handling the response was successful. Ensure that the content has
-        // been fully consumed.
-        HttpEntity entity = response.getEntity();
-        EntityUtils.consume(entity);
-        return result;
+    public ClientConnectionManager getConnectionManager() {
+        return this.connManager;
     }
 
 }

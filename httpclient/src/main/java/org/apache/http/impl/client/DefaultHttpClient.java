@@ -34,6 +34,8 @@ import org.apache.http.client.protocol.RequestAddCookies;
 import org.apache.http.client.protocol.RequestAuthCache;
 import org.apache.http.client.protocol.RequestClientConnControl;
 import org.apache.http.client.protocol.RequestDefaultHeaders;
+import org.apache.http.client.protocol.RequestProxyAuthentication;
+import org.apache.http.client.protocol.RequestTargetAuthentication;
 import org.apache.http.client.protocol.ResponseProcessCookies;
 import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.params.CoreConnectionPNames;

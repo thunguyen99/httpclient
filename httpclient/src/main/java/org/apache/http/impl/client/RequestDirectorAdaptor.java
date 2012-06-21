@@ -82,8 +82,8 @@ class RequestDirectorAdaptor implements RequestDirector {
         this.routePlanner = rouplan;
         this.params = params;
         MainClientExec mainExecutor = new MainClientExec(
-                requestExecutor, connman, reustrat, kastrat, targetAuthStrategy,
-                proxyAuthStrategy, userTokenHandler, params);
+                requestExecutor, connman, reustrat, kastrat,
+                targetAuthStrategy, proxyAuthStrategy, userTokenHandler);
         ProtocolExec protocolFacade = new ProtocolExec(mainExecutor, httpProcessor);
         RetryExec retryFacade = new RetryExec(protocolFacade, retryHandler);
         RedirectExec redirectFacade = new RedirectExec(retryFacade, rouplan, redirectStrategy);

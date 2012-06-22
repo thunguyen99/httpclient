@@ -30,14 +30,15 @@ package org.apache.http.impl.client;
 import java.net.ProxySelector;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 import org.apache.http.ConnectionReuseStrategy;
 import org.apache.http.HttpRequestInterceptor;
 import org.apache.http.HttpResponseInterceptor;
+import org.apache.http.HttpVersion;
 import org.apache.http.annotation.NotThreadSafe;
 import org.apache.http.client.AuthenticationStrategy;
 import org.apache.http.client.BackoffManager;
@@ -69,6 +70,13 @@ import org.apache.http.impl.conn.DefaultHttpRoutePlanner;
 import org.apache.http.impl.conn.PoolingClientConnectionManager;
 import org.apache.http.impl.conn.ProxySelectorRoutePlanner;
 import org.apache.http.impl.conn.SchemeRegistryFactory;
+import org.apache.http.params.CoreConnectionPNames;
+import org.apache.http.params.CoreProtocolPNames;
+import org.apache.http.params.HttpConnectionParams;
+import org.apache.http.params.HttpParams;
+import org.apache.http.params.HttpProtocolParams;
+import org.apache.http.params.SyncBasicHttpParams;
+import org.apache.http.protocol.HTTP;
 import org.apache.http.protocol.HttpProcessor;
 import org.apache.http.protocol.HttpRequestExecutor;
 import org.apache.http.protocol.ImmutableHttpProcessor;
@@ -76,6 +84,7 @@ import org.apache.http.protocol.RequestContent;
 import org.apache.http.protocol.RequestExpectContinue;
 import org.apache.http.protocol.RequestTargetHost;
 import org.apache.http.protocol.RequestUserAgent;
+import org.apache.http.util.VersionInfo;
 
 /**
  * {@link HttpClient} builder.
@@ -101,6 +110,51 @@ import org.apache.http.protocol.RequestUserAgent;
  *  <li>http.maxConnections</li>
  * </ul>
  * </p>
+ * <p>
+ * This class sets up the following parameters if not explicitly set:
+ * <ul>
+ * <li>Version: HttpVersion.HTTP_1_1</li>
+ * <li>ContentCharset: HTTP.DEFAULT_CONTENT_CHARSET</li>
+ * <li>NoTcpDelay: true</li>
+ * <li>SocketBufferSize: 8192</li>
+ * <li>UserAgent: Apache-HttpClient/release (java 1.5)</li>
+ * </ul>
+ * <p>
+ * The following parameters can be used to customize the behavior of {@link HttpClient}
+ * produced by this builder:
+ * <ul>
+ *  <li>{@link org.apache.http.params.CoreProtocolPNames#PROTOCOL_VERSION}</li>
+ *  <li>{@link org.apache.http.params.CoreProtocolPNames#STRICT_TRANSFER_ENCODING}</li>
+ *  <li>{@link org.apache.http.params.CoreProtocolPNames#HTTP_ELEMENT_CHARSET}</li>
+ *  <li>{@link org.apache.http.params.CoreProtocolPNames#USE_EXPECT_CONTINUE}</li>
+ *  <li>{@link org.apache.http.params.CoreProtocolPNames#WAIT_FOR_CONTINUE}</li>
+ *  <li>{@link org.apache.http.params.CoreProtocolPNames#USER_AGENT}</li>
+ *  <li>{@link org.apache.http.params.CoreConnectionPNames#TCP_NODELAY}</li>
+ *  <li>{@link org.apache.http.params.CoreConnectionPNames#SO_TIMEOUT}</li>
+ *  <li>{@link org.apache.http.params.CoreConnectionPNames#SO_LINGER}</li>
+ *  <li>{@link org.apache.http.params.CoreConnectionPNames#SO_REUSEADDR}</li>
+ *  <li>{@link org.apache.http.params.CoreConnectionPNames#SOCKET_BUFFER_SIZE}</li>
+ *  <li>{@link org.apache.http.params.CoreConnectionPNames#CONNECTION_TIMEOUT}</li>
+ *  <li>{@link org.apache.http.params.CoreConnectionPNames#MAX_LINE_LENGTH}</li>
+ *  <li>{@link org.apache.http.params.CoreConnectionPNames#MAX_HEADER_COUNT}</li>
+ *  <li>{@link org.apache.http.params.CoreConnectionPNames#STALE_CONNECTION_CHECK}</li>
+ *  <li>{@link org.apache.http.conn.params.ConnRoutePNames#FORCED_ROUTE}</li>
+ *  <li>{@link org.apache.http.conn.params.ConnRoutePNames#LOCAL_ADDRESS}</li>
+ *  <li>{@link org.apache.http.conn.params.ConnRoutePNames#DEFAULT_PROXY}</li>
+ *  <li>{@link org.apache.http.cookie.params.CookieSpecPNames#DATE_PATTERNS}</li>
+ *  <li>{@link org.apache.http.cookie.params.CookieSpecPNames#SINGLE_COOKIE_HEADER}</li>
+ *  <li>{@link org.apache.http.auth.params.AuthPNames#CREDENTIAL_CHARSET}</li>
+ *  <li>{@link org.apache.http.client.params.ClientPNames#COOKIE_POLICY}</li>
+ *  <li>{@link org.apache.http.client.params.ClientPNames#HANDLE_AUTHENTICATION}</li>
+ *  <li>{@link org.apache.http.client.params.ClientPNames#HANDLE_REDIRECTS}</li>
+ *  <li>{@link org.apache.http.client.params.ClientPNames#MAX_REDIRECTS}</li>
+ *  <li>{@link org.apache.http.client.params.ClientPNames#ALLOW_CIRCULAR_REDIRECTS}</li>
+ *  <li>{@link org.apache.http.client.params.ClientPNames#VIRTUAL_HOST}</li>
+ *  <li>{@link org.apache.http.client.params.ClientPNames#DEFAULT_HOST}</li>
+ *  <li>{@link org.apache.http.client.params.ClientPNames#DEFAULT_HEADERS}</li>
+ *  <li>{@link org.apache.http.client.params.ClientPNames#CONN_MANAGER_TIMEOUT}</li>
+ * </ul>
+ *
  * @since 4.3
  */
 @NotThreadSafe
@@ -128,6 +182,8 @@ public class HttpClientBuilder {
     private ConnectionBackoffStrategy connectionBackoffStrategy;
     private BackoffManager backoffManager;
 
+    private HttpParams params;
+
     private boolean systemProperties;
     private boolean laxRedirects;
     private boolean redirectHandlingDisabled;
@@ -135,13 +191,13 @@ public class HttpClientBuilder {
     private boolean contentCompressionDisabled;
     private boolean cookieManagementDisabled;
     private boolean authCachingDisabled;
+    private boolean connectionStateDisabled;
+
+    private int maxConnTotal = 0;
+    private int maxConnPerRoute = 0;
 
     public HttpClientBuilder() {
         super();
-    }
-
-    public final HttpRequestExecutor getRequestExecutor() {
-        return requestExec;
     }
 
     public final HttpClientBuilder setRequestExecutor(final HttpRequestExecutor requestExec) {
@@ -149,17 +205,9 @@ public class HttpClientBuilder {
         return this;
     }
 
-    public final ClientConnectionManager getConnectionManager() {
-        return connManager;
-    }
-
     public final HttpClientBuilder setConnectionManager(final ClientConnectionManager connManager) {
         this.connManager = connManager;
         return this;
-    }
-
-    public final ConnectionReuseStrategy getConnectionReuseStrategy() {
-        return reuseStrategy;
     }
 
     public final HttpClientBuilder setConnectionReuseStrategy(
@@ -168,27 +216,15 @@ public class HttpClientBuilder {
         return this;
     }
 
-    public final ConnectionKeepAliveStrategy getKeepAliveStrategy() {
-        return keepAliveStrategy;
-    }
-
     public final HttpClientBuilder setKeepAliveStrategy(
             final ConnectionKeepAliveStrategy keepAliveStrategy) {
         this.keepAliveStrategy = keepAliveStrategy;
         return this;
     }
 
-    public final UserTokenHandler getUserTokenHandler() {
-        return userTokenHandler;
-    }
-
     public final HttpClientBuilder setUserTokenHandler(final UserTokenHandler userTokenHandler) {
         this.userTokenHandler = userTokenHandler;
         return this;
-    }
-
-    public final AuthenticationStrategy getTargetAuthenticationStrategy() {
-        return targetAuthStrategy;
     }
 
     public final HttpClientBuilder setTargetAuthenticationStrategy(
@@ -197,18 +233,10 @@ public class HttpClientBuilder {
         return this;
     }
 
-    public final AuthenticationStrategy getProxyAuthenticationStrategy() {
-        return proxyAuthStrategy;
-    }
-
     public final HttpClientBuilder setProxyAuthenticationStrategy(
             final AuthenticationStrategy proxyAuthStrategy) {
         this.proxyAuthStrategy = proxyAuthStrategy;
         return this;
-    }
-
-    public final HttpProcessor getHttpProcessor() {
-        return httpprocessor;
     }
 
     public final HttpClientBuilder setHttpProcessor(final HttpProcessor httpprocessor) {
@@ -216,8 +244,7 @@ public class HttpClientBuilder {
         return this;
     }
 
-    public final HttpClientBuilder addResponseInterceptorFirst(
-            final HttpResponseInterceptor itcp) {
+    public final HttpClientBuilder addInterceptorFirst(final HttpResponseInterceptor itcp) {
         if (itcp == null) {
             return this;
         }
@@ -228,8 +255,7 @@ public class HttpClientBuilder {
         return this;
     }
 
-    public final HttpClientBuilder addResponseInterceptorLast(
-            final HttpResponseInterceptor itcp) {
+    public final HttpClientBuilder addInterceptorLast(final HttpResponseInterceptor itcp) {
         if (itcp == null) {
             return this;
         }
@@ -240,8 +266,7 @@ public class HttpClientBuilder {
         return this;
     }
 
-    public final HttpClientBuilder addRequestInterceptorFirst(
-            final HttpRequestInterceptor itcp) {
+    public final HttpClientBuilder addInterceptorFirst(final HttpRequestInterceptor itcp) {
         if (itcp == null) {
             return this;
         }
@@ -252,8 +277,7 @@ public class HttpClientBuilder {
         return this;
     }
 
-    public final HttpClientBuilder addRequestInterceptorLast(
-            final HttpRequestInterceptor itcp) {
+    public final HttpClientBuilder addInterceptorLast(final HttpRequestInterceptor itcp) {
         if (itcp == null) {
             return this;
         }
@@ -264,17 +288,9 @@ public class HttpClientBuilder {
         return this;
     }
 
-    public final HttpRequestRetryHandler getRetryHandler() {
-        return retryHandler;
-    }
-
     public final HttpClientBuilder setRetryHandler(final HttpRequestRetryHandler retryHandler) {
         this.retryHandler = retryHandler;
         return this;
-    }
-
-    public final HttpRoutePlanner getRoutePlanner() {
-        return routePlanner;
     }
 
     public final HttpClientBuilder setRoutePlanner(final HttpRoutePlanner routePlanner) {
@@ -282,17 +298,9 @@ public class HttpClientBuilder {
         return this;
     }
 
-    public final RedirectStrategy getRedirectStrategy() {
-        return redirectStrategy;
-    }
-
     public final HttpClientBuilder setRedirectStrategy(final RedirectStrategy redirectStrategy) {
         this.redirectStrategy = redirectStrategy;
         return this;
-    }
-
-    public final ConnectionBackoffStrategy getConnectionBackoffStrategy() {
-        return connectionBackoffStrategy;
     }
 
     public final HttpClientBuilder setConnectionBackoffStrategy(
@@ -301,12 +309,13 @@ public class HttpClientBuilder {
         return this;
     }
 
-    public final BackoffManager getBackoffManager() {
-        return backoffManager;
-    }
-
     public final HttpClientBuilder setBackoffManager(final BackoffManager backoffManager) {
         this.backoffManager = backoffManager;
+        return this;
+    }
+
+    public final HttpClientBuilder setParams(final HttpParams params) {
+        this.params = params;
         return this;
     }
 
@@ -317,6 +326,11 @@ public class HttpClientBuilder {
 
     public final HttpClientBuilder disableAutomaticRetries() {
         automaticRetriesDisabled = true;
+        return this;
+    }
+
+    public final HttpClientBuilder disableConnectionState() {
+        connectionStateDisabled = true;
         return this;
     }
 
@@ -340,11 +354,11 @@ public class HttpClientBuilder {
 
     public HttpClient build() {
         // Create main request executor
-        HttpRequestExecutor requestExec = getRequestExecutor();
+        HttpRequestExecutor requestExec = this.requestExec;
         if (requestExec == null) {
             requestExec = new HttpRequestExecutor();
         }
-        ClientConnectionManager connManager = getConnectionManager();
+        ClientConnectionManager connManager = this.connManager;
         if (connManager == null) {
             PoolingClientConnectionManager poolingmgr = new PoolingClientConnectionManager(
                     systemProperties ? SchemeRegistryFactory.createSystemDefault() :
@@ -357,10 +371,17 @@ public class HttpClientBuilder {
                     poolingmgr.setDefaultMaxPerRoute(max);
                     poolingmgr.setMaxTotal(2 * max);
                 }
+            } else {
+                if (maxConnTotal > 0) {
+                    poolingmgr.setMaxTotal(maxConnTotal);
+                }
+                if (maxConnPerRoute > 0) {
+                    poolingmgr.setDefaultMaxPerRoute(maxConnPerRoute);
+                }
             }
             connManager = poolingmgr;
         }
-        ConnectionReuseStrategy reuseStrategy = getConnectionReuseStrategy();
+        ConnectionReuseStrategy reuseStrategy = this.reuseStrategy;
         if (reuseStrategy != null) {
             if (systemProperties) {
                 String s = System.getProperty("http.keepAlive");
@@ -373,21 +394,25 @@ public class HttpClientBuilder {
                 reuseStrategy = new DefaultConnectionReuseStrategy();
             }
         }
-        ConnectionKeepAliveStrategy keepAliveStrategy = getKeepAliveStrategy();
+        ConnectionKeepAliveStrategy keepAliveStrategy = this.keepAliveStrategy;
         if (keepAliveStrategy == null) {
             keepAliveStrategy = new DefaultConnectionKeepAliveStrategy();
         }
-        AuthenticationStrategy targetAuthStrategy = getTargetAuthenticationStrategy();
+        AuthenticationStrategy targetAuthStrategy = this.targetAuthStrategy;
         if (targetAuthStrategy == null) {
             targetAuthStrategy = new TargetAuthenticationStrategy();
         }
-        AuthenticationStrategy proxyAuthStrategy = getProxyAuthenticationStrategy();
+        AuthenticationStrategy proxyAuthStrategy = this.proxyAuthStrategy;
         if (proxyAuthStrategy == null) {
             proxyAuthStrategy = new ProxyAuthenticationStrategy();
         }
-        UserTokenHandler userTokenHandler = getUserTokenHandler();
+        UserTokenHandler userTokenHandler = this.userTokenHandler;
         if (userTokenHandler == null) {
-            userTokenHandler = new DefaultUserTokenHandler();
+            if (!connectionStateDisabled) {
+                userTokenHandler = new DefaultUserTokenHandler();
+            } else {
+                userTokenHandler = new NoopUserTokenHandler();
+            }
         }
         ClientExecChain execChain = new MainClientExec(
                 requestExec,
@@ -400,7 +425,7 @@ public class HttpClientBuilder {
 
         execChain = decorateMainExec(execChain);
 
-        HttpProcessor httpprocessor = getHttpProcessor();
+        HttpProcessor httpprocessor = this.httpprocessor;
         if (httpprocessor == null) {
             ListBuilder<HttpRequestInterceptor> reqlb = new ListBuilder<HttpRequestInterceptor>();
             reqlb.addAll(requestFirst);
@@ -443,7 +468,7 @@ public class HttpClientBuilder {
 
         // Add request retry executor, if not disabled
         if (!automaticRetriesDisabled) {
-            HttpRequestRetryHandler retryHandler = getRetryHandler();
+            HttpRequestRetryHandler retryHandler = this.retryHandler;
             if (retryHandler == null) {
                 retryHandler = new DefaultHttpRequestRetryHandler();
             }
@@ -451,18 +476,18 @@ public class HttpClientBuilder {
         }
 
         // Add redirect executor, if not disabled
-        HttpRoutePlanner routePlanner = getRoutePlanner();
+        HttpRoutePlanner routePlanner = this.routePlanner;
         if (routePlanner == null) {
             if (systemProperties) {
                 routePlanner = new ProxySelectorRoutePlanner(
-                        getConnectionManager().getSchemeRegistry(),
+                        connManager.getSchemeRegistry(),
                         ProxySelector.getDefault());
             } else {
                 routePlanner = new DefaultHttpRoutePlanner(connManager.getSchemeRegistry());
             }
         }
         if (!redirectHandlingDisabled) {
-            RedirectStrategy redirectStrategy = getRedirectStrategy();
+            RedirectStrategy redirectStrategy = this.redirectStrategy;
             if (redirectStrategy == null) {
                 if (laxRedirects) {
                     redirectStrategy = new LaxRedirectStrategy();
@@ -474,33 +499,41 @@ public class HttpClientBuilder {
         }
 
         // Optionally, add connection back-off executor
-        BackoffManager backoffManager = getBackoffManager();
-        ConnectionBackoffStrategy connectionBackoffStrategy = getConnectionBackoffStrategy();
+        BackoffManager backoffManager = this.backoffManager;
+        ConnectionBackoffStrategy connectionBackoffStrategy = this.connectionBackoffStrategy;
         if (backoffManager != null && connectionBackoffStrategy != null) {
             execChain = new BackoffStrategyExec(execChain, connectionBackoffStrategy, backoffManager);
         }
 
-        return new InternalHttpClient(execChain, connManager, routePlanner, null);
+        HttpParams params = this.params;
+        if (params == null) {
+            params = new SyncBasicHttpParams();
+            setDefaultHttpParams(params);
+        }
+
+        return new InternalHttpClient(execChain, connManager, routePlanner, params);
     }
 
     static class ListBuilder<E> {
 
         private final LinkedList<E> list;
-        private final Set<Class<?>> uniqueClasses;
+        private final Map<Class<?>, E> uniqueClasses;
 
         ListBuilder() {
             this.list = new LinkedList<E>();
-            this.uniqueClasses = new HashSet<Class<?>>();
+            this.uniqueClasses = new HashMap<Class<?>, E>();
         }
 
         public void add(final E e) {
             if (e == null) {
                 return;
             }
-            if (!this.uniqueClasses.contains(e.getClass())) {
-                this.list.addFirst(e);
-                this.uniqueClasses.add(e.getClass());
+            E previous = this.uniqueClasses.remove(e.getClass());
+            if (previous != null) {
+                this.list.remove(previous);
             }
+            this.list.addFirst(e);
+            this.uniqueClasses.put(e.getClass(), e);
         }
 
         public void addAll(final Collection<E> c) {
@@ -525,6 +558,32 @@ public class HttpClientBuilder {
             return new ArrayList<E>(this.list);
         }
 
+    }
+
+    /**
+     * Saves the default set of HttpParams in the provided parameter.
+     * These are:
+     * <ul>
+     * <li>{@link CoreProtocolPNames#PROTOCOL_VERSION}: 1.1</li>
+     * <li>{@link CoreProtocolPNames#HTTP_CONTENT_CHARSET}: ISO-8859-1</li>
+     * <li>{@link CoreConnectionPNames#TCP_NODELAY}: true</li>
+     * <li>{@link CoreConnectionPNames#SOCKET_BUFFER_SIZE}: 8192</li>
+     * <li>{@link CoreProtocolPNames#USER_AGENT}: Apache-HttpClient/<release> (java 1.5)</li>
+     * </ul>
+     */
+    public static void setDefaultHttpParams(HttpParams params) {
+        HttpProtocolParams.setVersion(params, HttpVersion.HTTP_1_1);
+        HttpProtocolParams.setContentCharset(params, HTTP.DEF_CONTENT_CHARSET.name());
+        HttpConnectionParams.setTcpNoDelay(params, true);
+        HttpConnectionParams.setSocketBufferSize(params, 8192);
+
+        // determine the release version from packaged version info
+        final VersionInfo vi = VersionInfo.loadVersionInfo
+            ("org.apache.http.client", DefaultHttpClient.class.getClassLoader());
+        final String release = (vi != null) ?
+            vi.getRelease() : VersionInfo.UNAVAILABLE;
+        HttpProtocolParams.setUserAgent(params,
+                "Apache-HttpClient/" + release + " (java 1.5)");
     }
 
 }

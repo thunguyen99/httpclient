@@ -40,13 +40,19 @@ import org.apache.http.HttpRequestInterceptor;
 import org.apache.http.HttpResponseInterceptor;
 import org.apache.http.HttpVersion;
 import org.apache.http.annotation.NotThreadSafe;
+import org.apache.http.auth.AuthSchemeFactory;
+import org.apache.http.auth.AuthSchemeRegistry;
 import org.apache.http.client.AuthenticationStrategy;
 import org.apache.http.client.BackoffManager;
 import org.apache.http.client.ConnectionBackoffStrategy;
+import org.apache.http.client.CookieStore;
+import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.HttpRequestRetryHandler;
 import org.apache.http.client.RedirectStrategy;
 import org.apache.http.client.UserTokenHandler;
+import org.apache.http.client.params.AuthPolicy;
+import org.apache.http.client.params.CookiePolicy;
 import org.apache.http.client.protocol.RequestAcceptEncoding;
 import org.apache.http.client.protocol.RequestAddCookies;
 import org.apache.http.client.protocol.RequestAuthCache;
@@ -57,19 +63,34 @@ import org.apache.http.client.protocol.ResponseProcessCookies;
 import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.conn.ConnectionKeepAliveStrategy;
 import org.apache.http.conn.routing.HttpRoutePlanner;
+import org.apache.http.conn.scheme.Scheme;
+import org.apache.http.conn.scheme.SchemeLayeredSocketFactory;
+import org.apache.http.conn.scheme.SchemeRegistry;
+import org.apache.http.cookie.CookieSpecFactory;
+import org.apache.http.cookie.CookieSpecRegistry;
 import org.apache.http.impl.DefaultConnectionReuseStrategy;
 import org.apache.http.impl.NoConnectionReuseStrategy;
+import org.apache.http.impl.auth.BasicSchemeFactory;
+import org.apache.http.impl.auth.DigestSchemeFactory;
+import org.apache.http.impl.auth.KerberosSchemeFactory;
+import org.apache.http.impl.auth.NTLMSchemeFactory;
+import org.apache.http.impl.auth.SPNegoSchemeFactory;
 import org.apache.http.impl.client.exec.BackoffStrategyExec;
 import org.apache.http.impl.client.exec.ClientExecChain;
 import org.apache.http.impl.client.exec.MainClientExec;
 import org.apache.http.impl.client.exec.ProtocolExec;
 import org.apache.http.impl.client.exec.RedirectExec;
 import org.apache.http.impl.client.exec.RetryExec;
-import org.apache.http.impl.client.exec.InternalHttpClient;
 import org.apache.http.impl.conn.DefaultHttpRoutePlanner;
 import org.apache.http.impl.conn.PoolingClientConnectionManager;
 import org.apache.http.impl.conn.ProxySelectorRoutePlanner;
 import org.apache.http.impl.conn.SchemeRegistryFactory;
+import org.apache.http.impl.cookie.BestMatchSpecFactory;
+import org.apache.http.impl.cookie.BrowserCompatSpecFactory;
+import org.apache.http.impl.cookie.IgnoreSpecFactory;
+import org.apache.http.impl.cookie.NetscapeDraftSpecFactory;
+import org.apache.http.impl.cookie.RFC2109SpecFactory;
+import org.apache.http.impl.cookie.RFC2965SpecFactory;
 import org.apache.http.params.CoreConnectionPNames;
 import org.apache.http.params.CoreProtocolPNames;
 import org.apache.http.params.HttpConnectionParams;
@@ -161,6 +182,7 @@ import org.apache.http.util.VersionInfo;
 public class HttpClientBuilder {
 
     private HttpRequestExecutor requestExec;
+    private SchemeLayeredSocketFactory sslSocketFactory;
     private ClientConnectionManager connManager;
     private ConnectionReuseStrategy reuseStrategy;
     private ConnectionKeepAliveStrategy keepAliveStrategy;
@@ -184,8 +206,12 @@ public class HttpClientBuilder {
 
     private HttpParams params;
 
+    private Map<String, AuthSchemeFactory> authShemes;
+    private Map<String, CookieSpecFactory> cookieSpecs;
+    private CookieStore cookieStore;
+    private CredentialsProvider credentialsProvider;
+
     private boolean systemProperties;
-    private boolean laxRedirects;
     private boolean redirectHandlingDisabled;
     private boolean automaticRetriesDisabled;
     private boolean contentCompressionDisabled;
@@ -205,8 +231,23 @@ public class HttpClientBuilder {
         return this;
     }
 
+    public final HttpClientBuilder setSSLSocketFactory(final SchemeLayeredSocketFactory sslSocketFactory) {
+        this.sslSocketFactory = sslSocketFactory;
+        return this;
+    }
+
     public final HttpClientBuilder setConnectionManager(final ClientConnectionManager connManager) {
         this.connManager = connManager;
+        return this;
+    }
+
+    public final HttpClientBuilder setMaxConnTotal(int maxConnTotal) {
+        this.maxConnTotal = maxConnTotal;
+        return this;
+    }
+
+    public final HttpClientBuilder setMaxConnPerRoute(int maxConnPerRoute) {
+        this.maxConnPerRoute = maxConnPerRoute;
         return this;
     }
 
@@ -319,6 +360,35 @@ public class HttpClientBuilder {
         return this;
     }
 
+    public final HttpClientBuilder setCookieStore(final CookieStore cookieStore) {
+        this.cookieStore = cookieStore;
+        return this;
+    }
+
+    public final HttpClientBuilder setCredentialsProvider(
+            final CredentialsProvider credentialsProvider) {
+        this.credentialsProvider = credentialsProvider;
+        return this;
+    }
+
+    public final HttpClientBuilder registerAuthScheme(
+            final String name, final AuthSchemeFactory authSchemeFactory) {
+        if (this.authShemes == null) {
+            this.authShemes = new HashMap<String, AuthSchemeFactory>();
+        }
+        this.authShemes.put(name, authSchemeFactory);
+        return this;
+    }
+
+    public final HttpClientBuilder registerCookiePolicy(
+            final String name, final CookieSpecFactory cookieSpecFactory) {
+        if (this.cookieSpecs == null) {
+            this.cookieSpecs = new HashMap<String, CookieSpecFactory>();
+        }
+        this.cookieSpecs.put(name, cookieSpecFactory);
+        return this;
+    }
+
     public final HttpClientBuilder disableRedirectHandling() {
         redirectHandlingDisabled = true;
         return this;
@@ -334,13 +404,13 @@ public class HttpClientBuilder {
         return this;
     }
 
-    public final HttpClientBuilder useSystemProperties() {
-        systemProperties = true;
+    public final HttpClientBuilder disableContentCompression() {
+        contentCompressionDisabled = true;
         return this;
     }
 
-    public final HttpClientBuilder useLaxRedirects() {
-        laxRedirects = true;
+    public final HttpClientBuilder useSystemProperties() {
+        systemProperties = true;
         return this;
     }
 
@@ -360,9 +430,14 @@ public class HttpClientBuilder {
         }
         ClientConnectionManager connManager = this.connManager;
         if (connManager == null) {
+            SchemeRegistry schemeRegistry = systemProperties ?
+                    SchemeRegistryFactory.createSystemDefault() :
+                        SchemeRegistryFactory.createDefault();
+            if (sslSocketFactory != null) {
+                schemeRegistry.register(new Scheme("https", 443, sslSocketFactory));
+            }
             PoolingClientConnectionManager poolingmgr = new PoolingClientConnectionManager(
-                    systemProperties ? SchemeRegistryFactory.createSystemDefault() :
-                        SchemeRegistryFactory.createDefault());
+                    schemeRegistry);
             if (systemProperties) {
                 String s = System.getProperty("http.keepAlive");
                 if ("true".equalsIgnoreCase(s)) {
@@ -382,7 +457,7 @@ public class HttpClientBuilder {
             connManager = poolingmgr;
         }
         ConnectionReuseStrategy reuseStrategy = this.reuseStrategy;
-        if (reuseStrategy != null) {
+        if (reuseStrategy == null) {
             if (systemProperties) {
                 String s = System.getProperty("http.keepAlive");
                 if ("true".equalsIgnoreCase(s)) {
@@ -489,11 +564,7 @@ public class HttpClientBuilder {
         if (!redirectHandlingDisabled) {
             RedirectStrategy redirectStrategy = this.redirectStrategy;
             if (redirectStrategy == null) {
-                if (laxRedirects) {
-                    redirectStrategy = new LaxRedirectStrategy();
-                } else {
-                    redirectStrategy = new DefaultRedirectStrategy();
-                }
+                redirectStrategy = new DefaultRedirectStrategy();
             }
             execChain = new RedirectExec(execChain, routePlanner, redirectStrategy);
         }
@@ -511,7 +582,50 @@ public class HttpClientBuilder {
             setDefaultHttpParams(params);
         }
 
-        return new InternalHttpClient(execChain, connManager, routePlanner, params);
+        CookieSpecRegistry cookieSpecRegistry = new CookieSpecRegistry();
+        cookieSpecRegistry.register(CookiePolicy.BEST_MATCH, new BestMatchSpecFactory());
+        cookieSpecRegistry.register(CookiePolicy.BROWSER_COMPATIBILITY, new BrowserCompatSpecFactory());
+        cookieSpecRegistry.register(CookiePolicy.NETSCAPE, new NetscapeDraftSpecFactory());
+        cookieSpecRegistry.register(CookiePolicy.RFC_2109, new RFC2109SpecFactory());
+        cookieSpecRegistry.register(CookiePolicy.RFC_2965, new RFC2965SpecFactory());
+        cookieSpecRegistry.register(CookiePolicy.IGNORE_COOKIES, new IgnoreSpecFactory());
+        if (cookieSpecs != null) {
+            for (Map.Entry<String, CookieSpecFactory> entry: cookieSpecs.entrySet()) {
+                cookieSpecRegistry.register(entry.getKey(), entry.getValue());
+            }
+        }
+
+        AuthSchemeRegistry authSchemeRegistry = new AuthSchemeRegistry();
+        authSchemeRegistry.register(AuthPolicy.BASIC, new BasicSchemeFactory());
+        authSchemeRegistry.register(AuthPolicy.DIGEST, new DigestSchemeFactory());
+        authSchemeRegistry.register(AuthPolicy.NTLM, new NTLMSchemeFactory());
+        authSchemeRegistry.register(AuthPolicy.SPNEGO, new SPNegoSchemeFactory());
+        authSchemeRegistry.register(AuthPolicy.KERBEROS, new KerberosSchemeFactory());
+        if (authShemes != null) {
+            for (Map.Entry<String, AuthSchemeFactory> entry: authShemes.entrySet()) {
+                authSchemeRegistry.register(entry.getKey(), entry.getValue());
+            }
+        }
+
+        CookieStore defaultCookieStore = this.cookieStore;
+        if (defaultCookieStore == null) {
+            defaultCookieStore = new BasicCookieStore();
+        }
+
+        CredentialsProvider defaultCredentialsProvider = this.credentialsProvider;
+        if (defaultCredentialsProvider == null) {
+            defaultCredentialsProvider = new BasicCredentialsProvider();
+        }
+
+        return new InternalHttpClient(
+                execChain,
+                connManager,
+                routePlanner,
+                cookieSpecRegistry,
+                authSchemeRegistry,
+                defaultCookieStore,
+                defaultCredentialsProvider,
+                params);
     }
 
     static class ListBuilder<E> {
@@ -532,7 +646,7 @@ public class HttpClientBuilder {
             if (previous != null) {
                 this.list.remove(previous);
             }
-            this.list.addFirst(e);
+            this.list.add(e);
             this.uniqueClasses.put(e.getClass(), e);
         }
 
@@ -579,7 +693,7 @@ public class HttpClientBuilder {
 
         // determine the release version from packaged version info
         final VersionInfo vi = VersionInfo.loadVersionInfo
-            ("org.apache.http.client", DefaultHttpClient.class.getClassLoader());
+            ("org.apache.http.client", HttpClientBuilder.class.getClassLoader());
         final String release = (vi != null) ?
             vi.getRelease() : VersionInfo.UNAVAILABLE;
         HttpProtocolParams.setUserAgent(params,

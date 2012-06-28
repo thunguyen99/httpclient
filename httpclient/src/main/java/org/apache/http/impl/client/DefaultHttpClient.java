@@ -111,8 +111,11 @@ import org.apache.http.util.VersionInfo;
  * </ul>
  *
  * @since 4.0
+ * 
+ * @deprecated (4.3) use {@link HttpClientBuilder}.
  */
 @ThreadSafe
+@Deprecated
 public class DefaultHttpClient extends AbstractHttpClient {
 
     /**

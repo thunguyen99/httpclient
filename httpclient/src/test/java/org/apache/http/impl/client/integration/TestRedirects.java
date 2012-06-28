@@ -46,9 +46,11 @@ import org.apache.http.client.RedirectException;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.params.ClientPNames;
+import org.apache.http.client.protocol.ClientContext;
 import org.apache.http.cookie.SM;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.BasicCookieStore;
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.cookie.BasicClientCookie;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.protocol.BasicHttpContext;
@@ -69,7 +71,7 @@ public class TestRedirects extends IntegrationTestBase {
     @Before
     public void setUp() throws Exception {
         startServer();
-        initClient();
+        this.httpclient = new HttpClientBuilder().build();
     }
 
     private static class BasicRedirectService implements HttpRequestHandler {
@@ -599,11 +601,9 @@ public class TestRedirects extends IntegrationTestBase {
         int port = address.getPort();
         String host = address.getHostName();
 
-        this.localServer.register("*",
-                new BasicRedirectService(host, port));
+        this.localServer.register("*", new BasicRedirectService(host, port));
 
         CookieStore cookieStore = new BasicCookieStore();
-        this.httpclient.setCookieStore(cookieStore);
 
         BasicClientCookie cookie = new BasicClientCookie("name", "value");
         cookie.setDomain(host);
@@ -612,6 +612,7 @@ public class TestRedirects extends IntegrationTestBase {
         cookieStore.addCookie(cookie);
 
         HttpContext context = new BasicHttpContext();
+        context.setAttribute(ClientContext.COOKIE_STORE, cookieStore);
         HttpGet httpget = new HttpGet("/oldlocation/");
 
 
@@ -634,8 +635,7 @@ public class TestRedirects extends IntegrationTestBase {
         int port = address.getPort();
         String host = address.getHostName();
 
-        this.localServer.register("*",
-                new BasicRedirectService(host, port));
+        this.localServer.register("*", new BasicRedirectService(host, port));
 
         HttpContext context = new BasicHttpContext();
 

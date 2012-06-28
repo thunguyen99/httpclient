@@ -38,6 +38,7 @@ import org.apache.http.HttpRequest;
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
 import org.apache.http.ProtocolVersion;
+import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.conn.ClientConnectionRequest;
@@ -45,16 +46,14 @@ import org.apache.http.conn.ConnectionPoolTimeoutException;
 import org.apache.http.conn.ConnectionReleaseTrigger;
 import org.apache.http.conn.ManagedClientConnection;
 import org.apache.http.conn.routing.HttpRoute;
-import org.apache.http.conn.scheme.PlainSocketFactory;
 import org.apache.http.conn.scheme.Scheme;
 import org.apache.http.conn.scheme.SchemeRegistry;
 import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.conn.PoolingClientConnectionManager;
 import org.apache.http.impl.conn.SchemeRegistryFactory;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.mockup.SocketFactoryMockup;
-import org.apache.http.params.BasicHttpParams;
 import org.apache.http.params.HttpParams;
 import org.apache.http.protocol.BasicHttpContext;
 import org.apache.http.protocol.ExecutionContext;
@@ -72,7 +71,6 @@ public class TestAbortHandling extends IntegrationTestBase {
 
     @Before
     public void setUp() throws Exception {
-        initClient();
         startServer();
     }
 
@@ -111,6 +109,8 @@ public class TestAbortHandling extends IntegrationTestBase {
 
         t.start();
 
+        this.httpclient = new HttpClientBuilder().build();
+
         HttpContext context = new BasicHttpContext();
         try {
             this.httpclient.execute(getServerHttp(), httpget, context);
@@ -134,9 +134,10 @@ public class TestAbortHandling extends IntegrationTestBase {
         final ConMan conMan = new ConMan(connLatch, awaitLatch);
         final AtomicReference<Throwable> throwableRef = new AtomicReference<Throwable>();
         final CountDownLatch getLatch = new CountDownLatch(1);
-        final DefaultHttpClient client = new DefaultHttpClient(conMan, new BasicHttpParams());
+        final HttpClient client = new HttpClientBuilder().setConnectionManager(conMan).build();
         final HttpContext context = new BasicHttpContext();
         final HttpGet httpget = new HttpGet("http://www.example.com/a");
+        this.httpclient = client;
 
         new Thread(new Runnable() {
             public void run() {
@@ -169,16 +170,14 @@ public class TestAbortHandling extends IntegrationTestBase {
     public void testAbortAfterAllocateBeforeRequest() throws Exception {
         this.localServer.register("*", new BasicService());
 
-        CountDownLatch releaseLatch = new CountDownLatch(1);
-        SchemeRegistry registry = new SchemeRegistry();
-        registry.register(new Scheme("http", 80, PlainSocketFactory.getSocketFactory()));
-
-        PoolingClientConnectionManager conMan = new PoolingClientConnectionManager(registry);
+        final CountDownLatch releaseLatch = new CountDownLatch(1);
+        final PoolingClientConnectionManager conMan = new PoolingClientConnectionManager();
         final AtomicReference<Throwable> throwableRef = new AtomicReference<Throwable>();
         final CountDownLatch getLatch = new CountDownLatch(1);
-        final DefaultHttpClient client = new DefaultHttpClient(conMan, new BasicHttpParams());
+        final HttpClient client = new HttpClientBuilder().setConnectionManager(conMan).build();
         final HttpContext context = new BasicHttpContext();
         final HttpGet httpget = new CustomGet("a", releaseLatch);
+        this.httpclient = client;
 
         new Thread(new Runnable() {
             public void run() {
@@ -211,16 +210,14 @@ public class TestAbortHandling extends IntegrationTestBase {
     public void testAbortBeforeExecute() throws Exception {
         this.localServer.register("*", new BasicService());
 
-        SchemeRegistry registry = new SchemeRegistry();
-        registry.register(new Scheme("http", 80, PlainSocketFactory.getSocketFactory()));
-
-        PoolingClientConnectionManager conMan = new PoolingClientConnectionManager(registry);
+        final PoolingClientConnectionManager conMan = new PoolingClientConnectionManager();
         final AtomicReference<Throwable> throwableRef = new AtomicReference<Throwable>();
         final CountDownLatch getLatch = new CountDownLatch(1);
         final CountDownLatch startLatch = new CountDownLatch(1);
-        final DefaultHttpClient client = new DefaultHttpClient(conMan, new BasicHttpParams());
+        final HttpClient client = new HttpClientBuilder().setConnectionManager(conMan).build();
         final HttpContext context = new BasicHttpContext();
         final HttpGet httpget = new HttpGet("a");
+        this.httpclient = client;
 
         new Thread(new Runnable() {
             public void run() {
@@ -258,17 +255,15 @@ public class TestAbortHandling extends IntegrationTestBase {
         final int port = this.localServer.getServiceAddress().getPort();
         this.localServer.register("*", new BasicRedirectService(port));
 
-        SchemeRegistry registry = new SchemeRegistry();
-        registry.register(new Scheme("http", 80, PlainSocketFactory.getSocketFactory()));
-
-        CountDownLatch connLatch = new CountDownLatch(1);
-        CountDownLatch awaitLatch = new CountDownLatch(1);
-        ConnMan4 conMan = new ConnMan4(registry, connLatch, awaitLatch);
+        final CountDownLatch connLatch = new CountDownLatch(1);
+        final CountDownLatch awaitLatch = new CountDownLatch(1);
+        final ConnMan4 conMan = new ConnMan4(connLatch, awaitLatch);
         final AtomicReference<Throwable> throwableRef = new AtomicReference<Throwable>();
         final CountDownLatch getLatch = new CountDownLatch(1);
-        final DefaultHttpClient client  = new DefaultHttpClient(conMan, new BasicHttpParams());
+        final HttpClient client = new HttpClientBuilder().setConnectionManager(conMan).build();
         final HttpContext context = new BasicHttpContext();
         final HttpGet httpget = new HttpGet("a");
+        this.httpclient = client;
 
         new Thread(new Runnable() {
             public void run() {
@@ -317,7 +312,7 @@ public class TestAbortHandling extends IntegrationTestBase {
                 Mockito.any(HttpRoute.class), Mockito.any())).thenReturn(connrequest);
         Mockito.when(connmgr.getSchemeRegistry()).thenReturn(schemeRegistry);
 
-        final DefaultHttpClient client = new DefaultHttpClient(connmgr, new BasicHttpParams());
+        final HttpClient client = new HttpClientBuilder().setConnectionManager(connmgr).build();
         final HttpContext context = new BasicHttpContext();
         final HttpGet httpget = new HttpGet("http://www.example.com/a");
 
@@ -361,9 +356,8 @@ public class TestAbortHandling extends IntegrationTestBase {
         private final CountDownLatch connLatch;
         private final CountDownLatch awaitLatch;
 
-        public ConnMan4(SchemeRegistry schreg,
-                CountDownLatch connLatch, CountDownLatch awaitLatch) {
-            super(schreg);
+        public ConnMan4(CountDownLatch connLatch, CountDownLatch awaitLatch) {
+            super();
             this.connLatch = connLatch;
             this.awaitLatch = awaitLatch;
         }
@@ -475,7 +469,6 @@ public class TestAbortHandling extends IntegrationTestBase {
         }
 
         public void shutdown() {
-            throw new UnsupportedOperationException("just a mockup");
         }
     }
 

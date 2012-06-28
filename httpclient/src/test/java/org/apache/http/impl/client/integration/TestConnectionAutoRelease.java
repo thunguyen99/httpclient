@@ -45,7 +45,7 @@ import org.apache.http.conn.ManagedClientConnection;
 import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.entity.BasicHttpEntity;
 import org.apache.http.impl.DefaultHttpServerConnection;
-import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.conn.PoolingClientConnectionManager;
 import org.apache.http.pool.PoolStats;
 import org.apache.http.protocol.ExecutionContext;
@@ -59,14 +59,14 @@ import org.junit.Test;
 public class TestConnectionAutoRelease extends IntegrationTestBase {
 
     private PoolingClientConnectionManager mgr;
-    
+
     @Before
     public void setUp() throws Exception {
         startServer();
         this.mgr = new PoolingClientConnectionManager();
-        this.httpclient = new DefaultHttpClient(this.mgr);
+        this.httpclient = new HttpClientBuilder().setConnectionManager(this.mgr).build();
     }
-    
+
     @Test
     public void testReleaseOnEntityConsumeContent() throws Exception {
         this.mgr.setDefaultMaxPerRoute(1);

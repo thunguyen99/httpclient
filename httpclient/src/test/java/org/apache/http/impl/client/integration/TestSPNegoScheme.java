@@ -37,12 +37,15 @@ import org.apache.http.HttpStatus;
 import org.apache.http.auth.AuthScheme;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.Credentials;
+import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.params.AuthPolicy;
 import org.apache.http.client.params.ClientPNames;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.auth.SPNegoScheme;
 import org.apache.http.impl.auth.SPNegoSchemeFactory;
+import org.apache.http.impl.client.BasicCredentialsProvider;
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.params.HttpParams;
 import org.apache.http.protocol.HttpContext;
@@ -68,7 +71,6 @@ public class TestSPNegoScheme extends IntegrationTestBase {
     @Before
     public void setUp() throws Exception {
         startServer();
-        initClient();
     }
 
     /**
@@ -158,12 +160,15 @@ public class TestSPNegoScheme extends IntegrationTestBase {
         HttpHost target = new HttpHost("localhost", port);
 
         SPNegoSchemeFactory nsf = new NegotiateSchemeFactoryWithMockGssManager();
-
-        this.httpclient.getAuthSchemes().register(AuthPolicy.SPNEGO, nsf);
-
+        CredentialsProvider credentialsProvider = new BasicCredentialsProvider(); 
         Credentials use_jaas_creds = new UseJaasCredentials();
-        this.httpclient.getCredentialsProvider().setCredentials(
-                new AuthScope(null, -1, null), use_jaas_creds);
+        credentialsProvider.setCredentials(new AuthScope(null, -1, null), use_jaas_creds);
+
+        this.httpclient = new HttpClientBuilder()
+            .registerAuthScheme(AuthPolicy.SPNEGO, nsf)
+            .setCredentialsProvider(credentialsProvider)
+            .build();
+        
         this.httpclient.getParams().setParameter(ClientPNames.DEFAULT_HOST, target);
 
         String s = "/path";
@@ -187,13 +192,16 @@ public class TestSPNegoScheme extends IntegrationTestBase {
 
         NegotiateSchemeFactoryWithMockGssManager nsf = new NegotiateSchemeFactoryWithMockGssManager();
 
-        this.httpclient.getAuthSchemes().register(AuthPolicy.SPNEGO, nsf);
-
+        CredentialsProvider credentialsProvider = new BasicCredentialsProvider(); 
         Credentials use_jaas_creds = new UseJaasCredentials();
-        this.httpclient.getCredentialsProvider().setCredentials(
-                new AuthScope(null, -1, null), use_jaas_creds);
+        credentialsProvider.setCredentials(new AuthScope(null, -1, null), use_jaas_creds);
+        
+        this.httpclient = new HttpClientBuilder()
+            .registerAuthScheme(AuthPolicy.SPNEGO, nsf)
+            .setCredentialsProvider(credentialsProvider)
+            .build();
         this.httpclient.getParams().setParameter(ClientPNames.DEFAULT_HOST, target);
-
+        
         String s = "/path";
         HttpGet httpget = new HttpGet(s);
         HttpResponse response = this.httpclient.execute(httpget);

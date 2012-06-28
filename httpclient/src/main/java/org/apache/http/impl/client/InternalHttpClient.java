@@ -25,7 +25,7 @@
  *
  */
 
-package org.apache.http.impl.client.exec;
+package org.apache.http.impl.client;
 
 import java.io.IOException;
 
@@ -34,17 +34,21 @@ import org.apache.http.HttpHost;
 import org.apache.http.HttpRequest;
 import org.apache.http.HttpResponse;
 import org.apache.http.annotation.ThreadSafe;
+import org.apache.http.auth.AuthSchemeRegistry;
 import org.apache.http.auth.AuthState;
 import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.CookieStore;
+import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.methods.HttpExecutionAware;
 import org.apache.http.client.params.ClientPNames;
 import org.apache.http.client.protocol.ClientContext;
 import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.conn.routing.HttpRoutePlanner;
-import org.apache.http.impl.client.AbstractBasicHttpClient;
-import org.apache.http.impl.client.ClientParamsStack;
-import org.apache.http.impl.client.RequestAbortedException;
+import org.apache.http.cookie.CookieSpecRegistry;
+import org.apache.http.impl.client.exec.ClientExecChain;
+import org.apache.http.impl.client.exec.HttpRequestWrapper;
+import org.apache.http.params.DefaultedHttpParams;
 import org.apache.http.params.HttpParams;
 import org.apache.http.params.SyncBasicHttpParams;
 import org.apache.http.protocol.BasicHttpContext;
@@ -54,17 +58,25 @@ import org.apache.http.protocol.HttpContext;
  * @since 4.3
  */
 @ThreadSafe
-public class InternalHttpClient extends AbstractBasicHttpClient {
+class InternalHttpClient extends AbstractBasicHttpClient {
 
     private final ClientExecChain execChain;
     private final ClientConnectionManager connManager;
     private final HttpRoutePlanner routePlanner;
+    private final CookieSpecRegistry cookieSpecRegistry;
+    private final AuthSchemeRegistry authSchemeRegistry;
+    private final CookieStore cookieStore;
+    private final CredentialsProvider credentialsProvider;
     private final HttpParams params;
 
     public InternalHttpClient(
             final ClientExecChain execChain,
             final ClientConnectionManager connManager,
             final HttpRoutePlanner routePlanner,
+            final CookieSpecRegistry cookieSpecRegistry,
+            final AuthSchemeRegistry authSchemeRegistry,
+            final CookieStore cookieStore,
+            final CredentialsProvider credentialsProvider,
             final HttpParams params) {
         super();
         if (execChain == null) {
@@ -79,6 +91,10 @@ public class InternalHttpClient extends AbstractBasicHttpClient {
         this.execChain = execChain;
         this.connManager = connManager;
         this.routePlanner = routePlanner;
+        this.cookieSpecRegistry = cookieSpecRegistry;
+        this.authSchemeRegistry = authSchemeRegistry;
+        this.cookieStore = cookieStore;
+        this.credentialsProvider = credentialsProvider;
         this.params = params != null ? params : new SyncBasicHttpParams();
     }
 
@@ -96,13 +112,30 @@ public class InternalHttpClient extends AbstractBasicHttpClient {
         return this.routePlanner.determineRoute(host, request, context);
     }
 
-    private void setupContext(final HttpContext context) {
+    private HttpContext setupContext(final HttpContext localContext) {
+        HttpContext context = localContext != null ? localContext : new BasicHttpContext();
         if (context.getAttribute(ClientContext.TARGET_AUTH_STATE) == null) {
             context.setAttribute(ClientContext.TARGET_AUTH_STATE, new AuthState());
         }
         if (context.getAttribute(ClientContext.PROXY_AUTH_STATE) == null) {
             context.setAttribute(ClientContext.PROXY_AUTH_STATE, new AuthState());
         }
+        if (context.getAttribute(ClientContext.SCHEME_REGISTRY) == null) {
+            context.setAttribute(ClientContext.SCHEME_REGISTRY, this.connManager.getSchemeRegistry());
+        }
+        if (context.getAttribute(ClientContext.AUTHSCHEME_REGISTRY) == null) {
+            context.setAttribute(ClientContext.AUTHSCHEME_REGISTRY, this.authSchemeRegistry);
+        }
+        if (context.getAttribute(ClientContext.COOKIESPEC_REGISTRY) == null) {
+            context.setAttribute(ClientContext.COOKIESPEC_REGISTRY, this.cookieSpecRegistry);
+        }
+        if (context.getAttribute(ClientContext.COOKIE_STORE) == null) {
+            context.setAttribute(ClientContext.COOKIE_STORE, this.cookieStore);
+        }
+        if (context.getAttribute(ClientContext.CREDS_PROVIDER) == null) {
+            context.setAttribute(ClientContext.CREDS_PROVIDER, this.credentialsProvider);
+        }
+        return context;
     }
 
     public HttpResponse execute(
@@ -113,9 +146,7 @@ public class InternalHttpClient extends AbstractBasicHttpClient {
             throw new IllegalArgumentException("Request must not be null.");
         }
         try {
-            HttpContext execContext = context != null ? context : new BasicHttpContext();
-            setupContext(context);
-            HttpParams params = new ClientParamsStack(null, getParams(), request.getParams(), null);
+            HttpParams params = new DefaultedHttpParams(request.getParams(), getParams());
             HttpHost virtualHost = (HttpHost) params.getParameter(ClientPNames.VIRTUAL_HOST);
 
             HttpRequestWrapper wrapper = HttpRequestWrapper.wrap(request);
@@ -128,8 +159,8 @@ public class InternalHttpClient extends AbstractBasicHttpClient {
                     throw new RequestAbortedException("Request aborted");
                 }
             }
-            HttpRoute route = determineRoute(target, request, context);
-            return this.execChain.execute(route, wrapper, execContext, execListner);
+            HttpRoute route = determineRoute(target, wrapper, context);
+            return this.execChain.execute(route, wrapper, setupContext(context), execListner);
         } catch (HttpException httpException) {
             throw new ClientProtocolException(httpException);
         }

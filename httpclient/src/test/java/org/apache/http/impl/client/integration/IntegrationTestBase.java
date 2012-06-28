@@ -25,13 +25,13 @@
  */
 package org.apache.http.impl.client.integration;
 
-import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.client.HttpClient;
 import org.apache.http.localserver.LocalServerTestBase;
 import org.junit.After;
 
 public class IntegrationTestBase extends LocalServerTestBase {
 
-    protected DefaultHttpClient httpclient;
+    protected HttpClient httpclient;
 
     @After
     public void shutDownClient() throws Exception {
@@ -39,9 +39,5 @@ public class IntegrationTestBase extends LocalServerTestBase {
             this.httpclient.getConnectionManager().shutdown();
         }
     }
-    
-    protected void initClient() {
-        this.httpclient = new DefaultHttpClient();
-    }
-    
+
 }

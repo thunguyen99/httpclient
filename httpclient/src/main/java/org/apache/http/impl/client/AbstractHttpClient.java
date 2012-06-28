@@ -173,8 +173,11 @@ import org.apache.http.protocol.ImmutableHttpProcessor;
  *   shut down by calling {@link ClientConnectionManager#shutdown()}!
  *
  * @since 4.0
+ * 
+ * @deprecated (4.3) use {@link HttpClientBuilder}.
  */
 @ThreadSafe
+@Deprecated
 public abstract class AbstractHttpClient extends AbstractBasicHttpClient {
 
     private final Log log = LogFactory.getLog(getClass());

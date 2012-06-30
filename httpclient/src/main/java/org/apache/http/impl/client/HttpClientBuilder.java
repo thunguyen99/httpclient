@@ -50,6 +50,7 @@ import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.HttpRequestRetryHandler;
 import org.apache.http.client.RedirectStrategy;
+import org.apache.http.client.ServiceUnavailableRetryStrategy;
 import org.apache.http.client.UserTokenHandler;
 import org.apache.http.client.params.AuthPolicy;
 import org.apache.http.client.params.CookiePolicy;
@@ -81,6 +82,7 @@ import org.apache.http.impl.client.exec.MainClientExec;
 import org.apache.http.impl.client.exec.ProtocolExec;
 import org.apache.http.impl.client.exec.RedirectExec;
 import org.apache.http.impl.client.exec.RetryExec;
+import org.apache.http.impl.client.exec.ServiceUnavailableRetryExec;
 import org.apache.http.impl.conn.DefaultHttpRoutePlanner;
 import org.apache.http.impl.conn.PoolingClientConnectionManager;
 import org.apache.http.impl.conn.ProxySelectorRoutePlanner;
@@ -204,6 +206,8 @@ public class HttpClientBuilder {
     private ConnectionBackoffStrategy connectionBackoffStrategy;
     private BackoffManager backoffManager;
 
+    private ServiceUnavailableRetryStrategy serviceUnavailStrategy;
+    
     private HttpParams params;
 
     private Map<String, AuthSchemeFactory> authShemes;
@@ -352,6 +356,12 @@ public class HttpClientBuilder {
 
     public final HttpClientBuilder setBackoffManager(final BackoffManager backoffManager) {
         this.backoffManager = backoffManager;
+        return this;
+    }
+    
+    public final HttpClientBuilder setServiceUnavailableRetryStrategy(
+            final ServiceUnavailableRetryStrategy serviceUnavailStrategy) {
+        this.serviceUnavailStrategy = serviceUnavailStrategy;
         return this;
     }
 
@@ -569,6 +579,11 @@ public class HttpClientBuilder {
             execChain = new RedirectExec(execChain, routePlanner, redirectStrategy);
         }
 
+        // Optionally, add service unavailable retry executor
+        ServiceUnavailableRetryStrategy serviceUnavailStrategy = this.serviceUnavailStrategy;
+        if (serviceUnavailStrategy != null) {
+            execChain = new ServiceUnavailableRetryExec(execChain, serviceUnavailStrategy);
+        }
         // Optionally, add connection back-off executor
         BackoffManager backoffManager = this.backoffManager;
         ConnectionBackoffStrategy connectionBackoffStrategy = this.connectionBackoffStrategy;

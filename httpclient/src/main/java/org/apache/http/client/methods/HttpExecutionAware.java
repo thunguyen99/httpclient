@@ -27,9 +27,7 @@
 
 package org.apache.http.client.methods;
 
-import org.apache.http.conn.ClientConnectionRequest;
-import org.apache.http.conn.ConnectionReleaseTrigger;
-import org.apache.http.conn.ManagedClientConnection;
+import org.apache.http.concurrent.Cancellable;
 
 /**
  * Interface to be implemented by any object that wishes to be notified of request execution
@@ -42,17 +40,9 @@ public interface HttpExecutionAware {
     boolean isAborted();
 
     /**
-     * Sets the {@link ClientConnectionRequest} callback that can be
-     * used to abort a long-lived request for a connection.
+     * Sets {@link Cancellable} for the ongoing operation.
      */
-    void setConnectionRequest(ClientConnectionRequest connRequest);
-
-    /**
-     * Sets the {@link ConnectionReleaseTrigger} callback that can
-     * be used to abort an active connection.
-     * Typically, this will be the {@link ManagedClientConnection} itself.
-     */
-    void setReleaseTrigger(ConnectionReleaseTrigger releaseTrigger);
+    void setCancellable(Cancellable cancellable);
 
 }
 

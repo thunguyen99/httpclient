@@ -52,9 +52,11 @@ import org.apache.http.client.methods.HttpExecutionAware;
 import org.apache.http.client.params.HttpClientParams;
 import org.apache.http.client.protocol.ClientContext;
 import org.apache.http.client.protocol.RequestClientConnControl;
+import org.apache.http.concurrent.Cancellable;
 import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.conn.ClientConnectionRequest;
 import org.apache.http.conn.ConnectionKeepAliveStrategy;
+import org.apache.http.conn.ConnectionReleaseTrigger;
 import org.apache.http.conn.ManagedClientConnection;
 import org.apache.http.conn.routing.BasicRouteDirector;
 import org.apache.http.conn.routing.HttpRoute;
@@ -193,13 +195,20 @@ public class MainClientExec implements ClientExecChain {
 
         Object userToken = context.getAttribute(ClientContext.USER_TOKEN);
 
-        ClientConnectionRequest connRequest = connManager.requestConnection(route, userToken);
+        final ClientConnectionRequest connRequest = connManager.requestConnection(route, userToken);
         if (execAware != null) {
             if (execAware.isAborted()) {
                 connRequest.abortRequest();
                 throw new RequestAbortedException("Request aborted");
             } else {
-                execAware.setConnectionRequest(connRequest);
+                execAware.setCancellable(new Cancellable() {
+
+                    public boolean cancel() {
+                        connRequest.abortRequest();
+                        return true;
+                    }
+
+                });
             }
         }
 
@@ -224,6 +233,27 @@ public class MainClientExec implements ClientExecChain {
             }
         }
 
+        if (execAware != null) {
+            if (execAware.isAborted()) {
+                managedConn.releaseConnection();
+                throw new RequestAbortedException("Request aborted");
+            } else {
+                final ConnectionReleaseTrigger trigger = managedConn;
+                execAware.setCancellable(new Cancellable() {
+
+                    public boolean cancel() {
+                        try {
+                            trigger.abortConnection();
+                        } catch (IOException ex) {
+                            log.debug("I/O error aborting connection", ex);
+                        }
+                        return true;
+                    }
+
+                });
+            }
+        }
+
         try {
             HttpResponse response = null;
             for (int execCount = 1;; execCount++) {
@@ -233,13 +263,8 @@ public class MainClientExec implements ClientExecChain {
                             "with a non-repeatable request entity.");
                 }
 
-                if (execAware != null) {
-                    if (execAware.isAborted()) {
-                        managedConn.releaseConnection();
-                        throw new RequestAbortedException("Request aborted");
-                    } else {
-                        execAware.setReleaseTrigger(managedConn);
-                    }
+                if (execAware != null && execAware.isAborted()) {
+                    throw new RequestAbortedException("Request aborted");
                 }
 
                 if (!managedConn.isOpen()) {

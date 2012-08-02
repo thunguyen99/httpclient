@@ -145,6 +145,10 @@ class InternalHttpClient extends AbstractBasicHttpClient {
         if (request == null) {
             throw new IllegalArgumentException("Request must not be null.");
         }
+        HttpExecutionAware execListner = null;
+        if (request instanceof HttpExecutionAware) {
+            execListner = (HttpExecutionAware) request;
+        }
         try {
             HttpParams params = new DefaultedHttpParams(request.getParams(), getParams());
             HttpHost virtualHost = (HttpHost) params.getParameter(ClientPNames.VIRTUAL_HOST);
@@ -152,13 +156,6 @@ class InternalHttpClient extends AbstractBasicHttpClient {
             HttpRequestWrapper wrapper = HttpRequestWrapper.wrap(request);
             wrapper.setParams(params);
             wrapper.setVirtualHost(virtualHost);
-            HttpExecutionAware execListner = null;
-            if (request instanceof HttpExecutionAware) {
-                execListner = (HttpExecutionAware) request;
-                if (execListner.isAborted()) {
-                    throw new RequestAbortedException("Request aborted");
-                }
-            }
             HttpRoute route = determineRoute(target, wrapper, context);
             return this.execChain.execute(route, wrapper, setupContext(context), execListner);
         } catch (HttpException httpException) {

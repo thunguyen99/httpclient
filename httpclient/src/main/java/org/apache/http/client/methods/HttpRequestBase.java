@@ -37,6 +37,7 @@ import org.apache.http.annotation.NotThreadSafe;
 import org.apache.http.ProtocolVersion;
 import org.apache.http.RequestLine;
 import org.apache.http.client.utils.CloneUtils;
+import org.apache.http.concurrent.Cancellable;
 import org.apache.http.conn.ClientConnectionRequest;
 import org.apache.http.conn.ConnectionReleaseTrigger;
 import org.apache.http.message.AbstractHttpMessage;
@@ -60,8 +61,7 @@ public abstract class HttpRequestBase extends AbstractHttpMessage
     private volatile boolean aborted;
 
     private URI uri;
-    private ClientConnectionRequest connRequest;
-    private ConnectionReleaseTrigger releaseTrigger;
+    private Cancellable cancellable;
 
     public HttpRequestBase() {
         super();
@@ -102,41 +102,54 @@ public abstract class HttpRequestBase extends AbstractHttpMessage
         this.uri = uri;
     }
 
+    @Deprecated
     public void setConnectionRequest(final ClientConnectionRequest connRequest) {
         if (this.aborted) {
             return;
         }
         this.abortLock.lock();
         try {
-            this.connRequest = connRequest;
+            this.cancellable = new Cancellable() {
+
+                public boolean cancel() {
+                    connRequest.abortRequest();
+                    return true;
+                }
+
+            };
         } finally {
             this.abortLock.unlock();
         }
     }
 
+    @Deprecated
     public void setReleaseTrigger(final ConnectionReleaseTrigger releaseTrigger) {
         if (this.aborted) {
             return;
         }
         this.abortLock.lock();
         try {
-            this.releaseTrigger = releaseTrigger;
+            this.cancellable = new Cancellable() {
+
+                public boolean cancel() {
+                    try {
+                        releaseTrigger.abortConnection();
+                        return true;
+                    } catch (IOException ex) {
+                        return false;
+                    }
+                }
+
+            };
         } finally {
             this.abortLock.unlock();
         }
     }
 
-    private void cleanup() {
-        if (this.connRequest != null) {
-            this.connRequest.abortRequest();
-            this.connRequest = null;
-        }
-        if (this.releaseTrigger != null) {
-            try {
-                this.releaseTrigger.abortConnection();
-            } catch (IOException ex) {
-            }
-            this.releaseTrigger = null;
+    private void cancelExecution() {
+        if (this.cancellable != null) {
+            this.cancellable.cancel();
+            this.cancellable = null;
         }
     }
 
@@ -147,7 +160,7 @@ public abstract class HttpRequestBase extends AbstractHttpMessage
         this.abortLock.lock();
         try {
             this.aborted = true;
-            cleanup();
+            cancelExecution();
         } finally {
             this.abortLock.unlock();
         }
@@ -158,6 +171,39 @@ public abstract class HttpRequestBase extends AbstractHttpMessage
     }
 
     /**
+     * @since 4.2
+     */
+    public void started() {
+    }
+
+    /**
+     * @since 4.2
+     */
+    public void setCancellable(final Cancellable cancellable) {
+        if (this.aborted) {
+            return;
+        }
+        this.abortLock.lock();
+        try {
+            this.cancellable = cancellable;
+        } finally {
+            this.abortLock.unlock();
+        }
+    }
+
+    /**
+     * @since 4.2
+     */
+    public void completed() {
+        this.abortLock.lock();
+        try {
+            this.cancellable = null;
+        } finally {
+            this.abortLock.unlock();
+        }
+    }
+
+    /**
      * Resets internal state of the request making it reusable.
      *
      * @since 4.2
@@ -165,7 +211,7 @@ public abstract class HttpRequestBase extends AbstractHttpMessage
     public void reset() {
         this.abortLock.lock();
         try {
-            cleanup();
+            cancelExecution();
             this.aborted = false;
         } finally {
             this.abortLock.unlock();
@@ -187,8 +233,7 @@ public abstract class HttpRequestBase extends AbstractHttpMessage
         HttpRequestBase clone = (HttpRequestBase) super.clone();
         clone.abortLock = new ReentrantLock();
         clone.aborted = false;
-        clone.releaseTrigger = null;
-        clone.connRequest = null;
+        clone.cancellable = null;
         clone.headergroup = (HeaderGroup) CloneUtils.clone(this.headergroup);
         clone.params = (HttpParams) CloneUtils.clone(this.params);
         return clone;

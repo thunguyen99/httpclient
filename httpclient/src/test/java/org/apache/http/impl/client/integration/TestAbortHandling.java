@@ -40,10 +40,10 @@ import org.apache.http.HttpStatus;
 import org.apache.http.ProtocolVersion;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.concurrent.Cancellable;
 import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.conn.ClientConnectionRequest;
 import org.apache.http.conn.ConnectionPoolTimeoutException;
-import org.apache.http.conn.ConnectionReleaseTrigger;
 import org.apache.http.conn.ManagedClientConnection;
 import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.conn.scheme.Scheme;
@@ -481,7 +481,7 @@ public class TestAbortHandling extends IntegrationTestBase {
         }
 
         @Override
-        public void setReleaseTrigger(ConnectionReleaseTrigger releaseTrigger) {
+        public void setCancellable(Cancellable cancellable) {
             try {
                 if(!releaseTriggerLatch.await(1, TimeUnit.SECONDS))
                     throw new RuntimeException("Waited too long...");
@@ -489,7 +489,7 @@ public class TestAbortHandling extends IntegrationTestBase {
                 throw new RuntimeException(ie);
             }
 
-            super.setReleaseTrigger(releaseTrigger);
+            super.setCancellable(cancellable);
         }
 
     }

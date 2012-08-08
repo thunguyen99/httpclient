@@ -49,7 +49,6 @@ import org.apache.http.client.params.AuthPolicy;
 import org.apache.http.client.params.HttpClientParams;
 import org.apache.http.client.protocol.ClientContext;
 import org.apache.http.client.protocol.RequestClientConnControl;
-import org.apache.http.conn.HttpRoutedConnection;
 import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.entity.BufferedHttpEntity;
 import org.apache.http.impl.DefaultConnectionReuseStrategy;
@@ -214,7 +213,7 @@ public class ProxyClient {
         return conn.getSocket();
     }
 
-    static class ProxyConnection extends DefaultHttpClientConnection implements HttpRoutedConnection {
+    static class ProxyConnection extends DefaultHttpClientConnection {
 
         private final HttpRoute route;
 

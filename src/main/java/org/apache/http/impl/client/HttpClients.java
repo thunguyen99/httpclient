@@ -48,4 +48,8 @@ public class HttpClients {
         return HttpClientBuilder.create().build();
     }
 
+    public static CloseableHttpClient createSystem() {
+        return HttpClientBuilder.create().useSystemProperties().build();
+    }
+
 }

@@ -1,6 +1,3 @@
-<html>
-<head>
-<!--
 /*
  * ====================================================================
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -27,10 +24,8 @@
  * <http://www.apache.org/>.
  *
  */
--->
-</head>
-<body>
-Parameters for configuring HTTP authentication classes.
 
-</body>
-</html>
+/**
+ * Client HTTP communication APIs.
+ */
+package org.apache.http.client;

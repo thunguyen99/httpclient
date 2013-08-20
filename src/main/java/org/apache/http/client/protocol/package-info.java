@@ -1,6 +1,3 @@
-<html>
-<head>
-<!--
 /*
  * ====================================================================
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -27,10 +24,8 @@
  * <http://www.apache.org/>.
  *
  */
--->
-</head>
-<body>
-Default implementations for interfaces in
-{@link org.apache.http.impl.conn org.apache.http.impl.conn} and related classes.
-</body>
-</html>
+
+/**
+ * Client specific HTTP protocol handlers.
+ */
+package org.apache.http.client.protocol;

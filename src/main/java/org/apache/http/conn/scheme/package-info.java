@@ -1,6 +1,3 @@
-<html>
-<head>
-<!--
 /*
  * ====================================================================
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -27,10 +24,9 @@
  * <http://www.apache.org/>.
  *
  */
--->
-</head>
-<body>
-Helpers and utility classes for <i>HttpClient</i>.
 
-</body>
-</html>
+/**
+ * Deprecated.
+ * @deprecated (4.3).
+ */
+package org.apache.http.conn.scheme;

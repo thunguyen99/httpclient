@@ -1,6 +1,3 @@
-<html>
-<head>
-<!--
 /*
  * ====================================================================
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -27,10 +24,9 @@
  * <http://www.apache.org/>.
  *
  */
--->
-</head>
-<body>
-Additional request and response interceptors for HTTP state and
-authentication management.
-</body>
-</html>
+
+/**
+ * Deprecated.
+ * @deprecated (4.3).
+ */
+package org.apache.http.cookie.params;

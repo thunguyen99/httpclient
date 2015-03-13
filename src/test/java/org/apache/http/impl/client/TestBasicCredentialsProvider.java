@@ -26,6 +26,7 @@
  */
 package org.apache.http.impl.client;
 
+import org.apache.http.HttpHost;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.Credentials;
 import org.apache.http.auth.UsernamePasswordCredentials;
@@ -125,39 +126,13 @@ public class TestBasicCredentialsProvider {
     }
 
     @Test
-    public void testScopeMatching() {
-        final AuthScope authscope1 = new AuthScope("somehost", 80, "somerealm", "somescheme");
-        final AuthScope authscope2 = new AuthScope("someotherhost", 80, "somerealm", "somescheme");
-        Assert.assertTrue(authscope1.match(authscope2) < 0);
-
-        int m1 = authscope1.match(
-            new AuthScope(AuthScope.ANY_HOST, AuthScope.ANY_PORT, AuthScope.ANY_REALM, "somescheme"));
-        int m2 = authscope1.match(
-            new AuthScope(AuthScope.ANY_HOST, AuthScope.ANY_PORT, "somerealm", AuthScope.ANY_SCHEME));
-        Assert.assertTrue(m2 > m1);
-
-        m1 = authscope1.match(
-            new AuthScope(AuthScope.ANY_HOST, AuthScope.ANY_PORT, AuthScope.ANY_REALM, "somescheme"));
-        m2 = authscope1.match(
-            new AuthScope(AuthScope.ANY_HOST, AuthScope.ANY_PORT, "somerealm", AuthScope.ANY_SCHEME));
-        Assert.assertTrue(m2 > m1);
-
-        m1 = authscope1.match(
-            new AuthScope(AuthScope.ANY_HOST, AuthScope.ANY_PORT, "somerealm", "somescheme"));
-        m2 = authscope1.match(
-            new AuthScope(AuthScope.ANY_HOST, 80, AuthScope.ANY_REALM, AuthScope.ANY_SCHEME));
-        Assert.assertTrue(m2 > m1);
-
-        m1 = authscope1.match(
-            new AuthScope(AuthScope.ANY_HOST, 80, "somerealm", "somescheme"));
-        m2 = authscope1.match(
-            new AuthScope("somehost", AuthScope.ANY_PORT, AuthScope.ANY_REALM, AuthScope.ANY_SCHEME));
-        Assert.assertTrue(m2 > m1);
-
-        m1 = authscope1.match(AuthScope.ANY);
-        m2 = authscope1.match(
-            new AuthScope(AuthScope.ANY_HOST, AuthScope.ANY_PORT, AuthScope.ANY_REALM, "somescheme"));
-        Assert.assertTrue(m2 > m1);
+    public void testMixedCaseHostname() throws Exception {
+        final HttpHost httpHost = new HttpHost("hOsT", 80);
+        final BasicCredentialsProvider state = new BasicCredentialsProvider();
+        final Credentials expected = new UsernamePasswordCredentials("name", "pass");
+        state.setCredentials(new AuthScope(httpHost), expected);
+        final Credentials got = state.getCredentials(DEFSCOPE);
+        Assert.assertEquals(expected, got);
     }
 
     @Test

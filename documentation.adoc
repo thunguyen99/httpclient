@@ -51,15 +51,17 @@ Testing is comprised of two sections: unit tests and integration tests.
 
 Unit Tests
 ~~~~~~~~~~
-It has to determined how one can reasonably mock GSS objects to test the new implementations.
+It has to determined how one can reasonably mock GSS objects to test the new implementation.
 
 Integration Tests
 ~~~~~~~~~~~~~~~~~~~
 Integeration tests will be performed in a corporate environment with the following setup:
+
 * Client OS: Windows 7, RHEL 6, FreeBSD 9.x, HP-UX 11.31
 * Java runtime: 1.6 and 1.7 from Oracle, OpenJDK and HP
-* Target servers: Microsoft ForeFront TMG (HTTP proxy) (SSPI), Apache 2.2.x with
-  link:https://github.com/michael-o/mod_spnego[`mod_spnego`] (MIT Kerberos) and link:http://tomcatspnegoad.sourceforge.net/[Tomcat Authnz SPNEGO AD] (JGSS).
+* Target servers: Microsoft Forefront TMG (HTTP proxy) (SSPI), Microsoft IIS 7.5/8.0 (SSPI),
+  Apache Web Server 2.2.x with link:https://github.com/michael-o/mod_spnego[`mod_spnego`]
+  (MIT Kerberos) and link:http://tomcatspnegoad.sourceforge.net/[Tomcat Authnz SPNEGO AD] (JGSS).
 
 [NOTE]
   Not all combinations can be tested.
@@ -69,20 +71,22 @@ Concrete requests are still open.
 
 Awkward Stuff
 -------------
+sdfsa
 [qanda]
-Why does MalformedChallengeException not extend AuthenticationException though it is documented for
-authentication purposes?::
-        OK: MalformedChallengeException signals syntax violation of some sort presenting the client
-        from understanding the challenge whereas AuthenticationException signals inability or
-        unwillingness to respond to the challenge. To me these are different type of issues, but I am
-        open to changing it in 5.0.
+Why does `MalformedChallengeException` not extend `AuthenticationException` though it is documented for authentication purposes?::
+OK: `MalformedChallengeException` signals syntax violation of some sort presenting the client from
+understanding the challenge whereas `AuthenticationException` signals inability or unwillingness
+to respond to the challenge. To me these are different type of issues, but I am open to changing it
+in 5.0.
 
-The name of ChallengeState is quite confusing. Where is the state? This is merely a ChallengeHostType::
-        OK: We can deprecate it and replace with AuthCounterpartType or some such in 4.5.
+The name of `ChallengeState` is quite confusing. Where is the state? This is merely a `ChallengeHostType`.::
+OK: We can deprecate it and replace with `AuthCounterpartType` or some such in 4.5.
+
 Can a `ContextAwareAuthScheme` instance be reused?::
-        TBD
+TBD
 
 Todos
 -----
 
 * Update documentation of `DefaultUserTokenHandler`
+

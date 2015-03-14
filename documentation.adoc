@@ -1,15 +1,15 @@
 Designing HTTPCLIENT-1625
 =========================
 Michael Osipov <michaelo@apache.org>
+$Id$
 :tabsize: 4
 :toc:
 :icons:
 :linkcss:
 :homepage: http://people.apache.org/~michaelo/issues/HTTPCLIENT-1625/
 
-This documents tracks the design goals of the link:https://issues.apache.org/jira/browse/HTTPCLIENT-1625
-[complete redesign of the GSS-based authentication in HttpClient]. Namely, implementation decisions,
-known issues, awkward stuff, testing, etc.
+This documents tracks the design goals of the link:https://issues.apache.org/jira/browse/HTTPCLIENT-1625[complete redesign of the GSS-based authentication in HttpClient].
+Namely, implementation decisions, known issues, awkward stuff, testing, etc.
 
 Implementation Decisions
 ------------------------
@@ -61,7 +61,7 @@ Integeration tests will be performed in a corporate environment with the followi
 * Java runtime: 1.6 and 1.7 from Oracle, OpenJDK and HP
 * Target servers: Microsoft Forefront TMG (HTTP proxy) (SSPI), Microsoft IIS 7.5/8.0 (SSPI),
   Apache Web Server 2.2.x with link:https://github.com/michael-o/mod_spnego[`mod_spnego`]
-  (MIT Kerberos) and link:http://tomcatspnegoad.sourceforge.net/[Tomcat Authnz SPNEGO AD] (JGSS).
+  (MIT Kerberos) and Apache Tomcat 6 with link:http://tomcatspnegoad.sourceforge.net/[Tomcat Authnz SPNEGO AD] (JGSS).
 
 [NOTE]
   Not all combinations can be tested.

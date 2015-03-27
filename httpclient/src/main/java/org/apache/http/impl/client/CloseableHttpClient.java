@@ -57,7 +57,9 @@ public abstract class CloseableHttpClient implements HttpClient, Closeable {
 
     private final Log log = LogFactory.getLog(getClass());
 
-    protected abstract CloseableHttpResponse doExecute(HttpHost target, HttpRequest request,
+    protected abstract CloseableHttpResponse doExecute(
+            HttpHost target,
+            HttpRequest request,
             HttpContext context) throws IOException, ClientProtocolException;
 
     /**
@@ -75,9 +77,8 @@ public abstract class CloseableHttpClient implements HttpClient, Closeable {
      * {@inheritDoc}
      */
     @Override
-    public CloseableHttpResponse execute(
-            final HttpUriRequest request,
-            final HttpContext context) throws IOException, ClientProtocolException {
+    public CloseableHttpResponse execute(final HttpUriRequest request,
+                                         final HttpContext context) throws IOException, ClientProtocolException {
         Args.notNull(request, "HTTP request");
         return doExecute(determineTarget(request), request, context);
     }
@@ -102,8 +103,7 @@ public abstract class CloseableHttpClient implements HttpClient, Closeable {
      * {@inheritDoc}
      */
     @Override
-    public CloseableHttpResponse execute(
-            final HttpUriRequest request) throws IOException, ClientProtocolException {
+    public CloseableHttpResponse execute(final HttpUriRequest request) throws IOException, ClientProtocolException {
         return execute(request, (HttpContext) null);
     }
 
